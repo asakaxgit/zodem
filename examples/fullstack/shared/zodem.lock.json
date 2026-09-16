@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "messages": {
+    "acme.user.v1.Address": {
+      "nextField": 3,
+      "fields": {
+        "city": {
+          "number": 1,
+          "type": "string",
+          "label": "singular"
+        },
+        "country": {
+          "number": 2,
+          "type": "string",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    },
+    "acme.user.v1.CreateUserRequest": {
+      "nextField": 7,
+      "fields": {
+        "address": {
+          "number": 6,
+          "type": "acme.user.v1.Address",
+          "label": "singular"
+        },
+        "age": {
+          "number": 3,
+          "type": "int32",
+          "label": "singular"
+        },
+        "display_name": {
+          "number": 2,
+          "type": "string",
+          "label": "singular"
+        },
+        "email": {
+          "number": 1,
+          "type": "string",
+          "label": "singular"
+        },
+        "nickname": {
+          "number": 5,
+          "type": "google.protobuf.StringValue",
+          "label": "singular"
+        },
+        "role": {
+          "number": 4,
+          "type": "enum:acme.user.v1.User.Role",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    },
+    "acme.user.v1.CreateUserResponse": {
+      "nextField": 2,
+      "fields": {
+        "user": {
+          "number": 1,
+          "type": "acme.user.v1.User",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    },
+    "acme.user.v1.GetUserRequest": {
+      "nextField": 2,
+      "fields": {
+        "id": {
+          "number": 1,
+          "type": "string",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    },
+    "acme.user.v1.GetUserResponse": {
+      "nextField": 2,
+      "fields": {
+        "user": {
+          "number": 1,
+          "type": "acme.user.v1.User",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    },
+    "acme.user.v1.User": {
+      "nextField": 9,
+      "fields": {
+        "address": {
+          "number": 7,
+          "type": "acme.user.v1.Address",
+          "label": "singular"
+        },
+        "age": {
+          "number": 4,
+          "type": "int32",
+          "label": "singular"
+        },
+        "created_at": {
+          "number": 8,
+          "type": "google.protobuf.Timestamp",
+          "label": "singular"
+        },
+        "display_name": {
+          "number": 3,
+          "type": "string",
+          "label": "singular"
+        },
+        "email": {
+          "number": 2,
+          "type": "string",
+          "label": "singular"
+        },
+        "id": {
+          "number": 1,
+          "type": "string",
+          "label": "singular"
+        },
+        "nickname": {
+          "number": 6,
+          "type": "google.protobuf.StringValue",
+          "label": "singular"
+        },
+        "role": {
+          "number": 5,
+          "type": "enum:acme.user.v1.User.Role",
+          "label": "singular"
+        }
+      },
+      "reserved": []
+    }
+  },
+  "enums": {
+    "acme.user.v1.User.Role": {
+      "nextValue": 3,
+      "values": {
+        "ROLE_ADMIN": 1,
+        "ROLE_MEMBER": 2
+      },
+      "reserved": []
+    }
+  }
+}

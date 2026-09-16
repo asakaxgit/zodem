@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.tmp-*/
+.DS_Store
+*.log
+
+# examples/fullstack/shared/proto, zodem.lock.json, and src/gen/ are
+# intentionally committed generated output, not build artifacts to ignore.

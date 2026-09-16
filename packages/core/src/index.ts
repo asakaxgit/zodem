@@ -1,0 +1,19 @@
+export { zodem, message, service, bytes, getRegisteredMessages, getRegisteredServices, zodemRegistry, resetRegistry } from "./registry.js";
+export type { ZodemFieldMeta, ZodemMeta, ZodemMethodDef, ZodemServiceDef, RegisteredMessage } from "./registry.js";
+export type * from "./ir.js";
+export { walkRegistry, walkObjectIntoMessage, WalkerContext } from "./walker.js";
+export type { WalkResult } from "./walker.js";
+export {
+  emptyLock,
+  serializeLock,
+  parseLock,
+  validateLock,
+  syncMessage,
+  syncEnum,
+  markRemovedEntries,
+  typeKey,
+  isWireCompatible,
+} from "./lock.js";
+export type { LockFile, LockMessageEntry, LockEnumEntry, LockFieldEntry, SyncOptions, SyncResult } from "./lock.js";
+export * from "./errors.js";
+export { camelToSnake, pascalCase, upperSnake } from "./naming.js";
