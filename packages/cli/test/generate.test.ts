@@ -9,9 +9,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 // static import) through Vite's SSR module graph, while jiti's *dynamic*
 // import of a schema file goes through Node's native loader — those resolve
 // to two separate instances of @zodem/core in-process, so resetRegistry()
-// on one never reaches the other. That split doesn't exist for a real `one-
-// zodem` invocation (a plain Node process with no Vite involved), so testing
-// the built binary is both the fix and the more faithful integration test.
+// on one never reaches the other. That split doesn't exist for a real
+// `zodem` invocation (a plain Node process with no Vite involved), so
+// testing the built binary is both the fix and the more faithful
+// integration test.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliRoot = join(here, "..");
@@ -195,5 +196,102 @@ describe("zodem generate: end-to-end", () => {
 
     execFileSync(bufBin, ["lint"], { cwd: join(root, "proto"), stdio: "pipe" });
     execFileSync(bufBin, ["build"], { cwd: join(root, "proto"), stdio: "pipe" });
+  });
+});
+
+const SCHEMA_RENAMED_FIELD = `
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+
+export const User = zodem.message("acme.user.v1.User", {
+  id: z.string().uuid(),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(150).meta({ proto: "int32" }),
+  role: z.enum(["admin", "member"]),
+  fullName: z.string().optional(),
+  address: z.object({ city: z.string(), country: z.string() }),
+  createdAt: z.date(),
+});
+`;
+
+// same shape as SCHEMA_V1 but the message's own name changes
+const SCHEMA_RENAMED_MESSAGE = `
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+
+export const Account = zodem.message("acme.user.v1.Account", {
+  id: z.string().uuid(),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(150).meta({ proto: "int32" }),
+  role: z.enum(["admin", "member"]),
+  nickname: z.string().optional(),
+  address: z.object({ city: z.string(), country: z.string() }),
+  createdAt: z.date(),
+});
+`;
+
+describe("zodem rename: end-to-end", () => {
+  it("field: reusing the same number instead of reserving it, once the schema is updated to match", () => {
+    writeProject(SCHEMA_V1);
+    runCli(["generate"], root);
+    const before = JSON.parse(readFileSync(lockPath(), "utf8"));
+    const originalNumber = before.messages["acme.user.v1.User"].fields.nickname.number;
+
+    const renamed = runCli(["rename", "field", "acme.user.v1.User", "nickname", "full_name"], root);
+    expect(renamed.status).toBe(0);
+    expect(renamed.stdout).toMatch(/nickname -> full_name/);
+
+    writeFileSync(join(root, "schema.ts"), SCHEMA_RENAMED_FIELD, "utf8");
+    const result = runCli(["generate"], root); // rename only touched the lockfile — the .proto still needs a real regenerate
+    expect(result.status).toBe(0);
+
+    const after = JSON.parse(readFileSync(lockPath(), "utf8"));
+    expect(after.messages["acme.user.v1.User"].fields.full_name.number).toBe(originalNumber);
+    expect(after.messages["acme.user.v1.User"].reserved).toEqual([]); // not reserved-and-reallocated
+    expect(after.messages["acme.user.v1.User"].fields.nickname).toBeUndefined();
+
+    // now the lockfile and .proto both agree with the schema
+    expect(runCli(["generate", "--check"], root).status).toBe(0);
+  });
+
+  it("message: cascades to everything nested under it, and the schema rename lines up cleanly", () => {
+    writeProject(SCHEMA_V1);
+    runCli(["generate"], root);
+    const before = JSON.parse(readFileSync(lockPath(), "utf8"));
+
+    const renamed = runCli(["rename", "message", "acme.user.v1.User", "acme.user.v1.Account"], root);
+    expect(renamed.status).toBe(0);
+
+    const afterRename = JSON.parse(readFileSync(lockPath(), "utf8"));
+    expect(afterRename.messages["acme.user.v1.User"]).toBeUndefined();
+    expect(afterRename.messages["acme.user.v1.Account"]).toBeDefined();
+    expect(afterRename.messages["acme.user.v1.Account.Address"]).toBeDefined();
+    expect(afterRename.enums["acme.user.v1.Account.Role"]).toBeDefined();
+    // numbers are untouched by the rename itself
+    expect(afterRename.messages["acme.user.v1.Account"].fields.id.number).toBe(
+      before.messages["acme.user.v1.User"].fields.id.number,
+    );
+
+    writeFileSync(join(root, "schema.ts"), SCHEMA_RENAMED_MESSAGE, "utf8");
+    const result = runCli(["generate"], root);
+    expect(result.status).toBe(0);
+
+    const afterGenerate = JSON.parse(readFileSync(lockPath(), "utf8"));
+    expect(afterGenerate.messages["acme.user.v1.Account"].reserved).toEqual([]);
+    expect(afterGenerate.messages["acme.user.v1.Account"].fields.id.number).toBe(
+      before.messages["acme.user.v1.User"].fields.id.number,
+    );
+
+    // now the lockfile and .proto both agree with the schema
+    expect(runCli(["generate", "--check"], root).status).toBe(0);
+  });
+
+  it("reports a clear, non-zero-exit error for a field that doesn't exist", () => {
+    writeProject(SCHEMA_V1);
+    runCli(["generate"], root);
+
+    const result = runCli(["rename", "field", "acme.user.v1.User", "does_not_exist", "whatever"], root);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/no active field named "does_not_exist"/);
   });
 });
