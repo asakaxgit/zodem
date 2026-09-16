@@ -3,13 +3,21 @@ import {
   emptyLock,
   isWireCompatible,
   markRemovedEntries,
+  renameEnumValue,
+  renameField,
+  renameMessage,
   syncEnum,
   syncMessage,
   typeKey,
   validateLock,
   type LockFile,
 } from "../src/lock.js";
-import { BreakingChangeError, LockfileValidationError, PinnedNumberMismatchError } from "../src/errors.js";
+import {
+  BreakingChangeError,
+  LockfileValidationError,
+  PinnedNumberMismatchError,
+  RenameError,
+} from "../src/errors.js";
 import type { IREnum, IRMessage } from "../src/ir.js";
 
 function msg(fullName: string, fields: IRMessage["fields"]): IRMessage {
@@ -259,5 +267,158 @@ describe("typeKey", () => {
   });
   it("renders maps recursively", () => {
     expect(typeKey({ kind: "map", key: "string", value: { kind: "scalar", name: "int32" } })).toBe("map<string,int32>");
+  });
+});
+
+describe("renameField", () => {
+  it("moves the field entry to the new name, keeping its number and type", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x"), field("y", "int32")]), lock, { allowBreaking: false });
+
+    renameField(lock, "a.A", "y", "z");
+
+    const entry = lock.messages["a.A"]!;
+    expect(entry.fields.y).toBeUndefined();
+    expect(entry.fields.z).toEqual({ number: 2, type: "int32", label: "singular" });
+    expect(entry.fields.x!.number).toBe(1); // untouched
+  });
+
+  it("throws when the message isn't in the lockfile", () => {
+    expect(() => renameField(emptyLock(), "a.Missing", "x", "y")).toThrow(RenameError);
+  });
+
+  it("throws when the old field doesn't exist at all", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false });
+    expect(() => renameField(lock, "a.A", "nope", "y")).toThrow(RenameError);
+  });
+
+  it("throws a specific message when the old field is reserved, not active", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x"), field("y")]), lock, { allowBreaking: false });
+    syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false }); // y -> reserved
+    expect(() => renameField(lock, "a.A", "y", "z")).toThrow(/reserved/);
+  });
+
+  it("throws when the new name collides with an active field", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x"), field("y")]), lock, { allowBreaking: false });
+    expect(() => renameField(lock, "a.A", "y", "x")).toThrow(RenameError);
+  });
+
+  it("throws when the new name collides with a reserved name", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x"), field("y")]), lock, { allowBreaking: false });
+    syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false }); // y -> reserved
+    const withZ = msg("a.A", [field("x"), field("z")]);
+    syncMessage(withZ, lock, { allowBreaking: false }); // z -> 3
+    expect(() => renameField(lock, "a.A", "z", "y")).toThrow(RenameError);
+  });
+});
+
+describe("renameMessage", () => {
+  it("moves the message entry to the new full name, preserving its contents", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false });
+
+    renameMessage(lock, "a.A", "a.B");
+
+    expect(lock.messages["a.A"]).toBeUndefined();
+    expect(lock.messages["a.B"]).toEqual({ nextField: 2, fields: { x: { number: 1, type: "string", label: "singular" } }, reserved: [] });
+  });
+
+  it("cascades to nested messages and enums", () => {
+    const lock: LockFile = {
+      version: 1,
+      messages: {
+        "a.A": { nextField: 2, fields: {}, reserved: [] },
+        "a.A.Address": { nextField: 2, fields: {}, reserved: [] },
+      },
+      enums: {
+        "a.A.Role": { nextValue: 2, values: { ROLE_ADMIN: 1 }, reserved: [] },
+      },
+    };
+
+    renameMessage(lock, "a.A", "a.B");
+
+    expect(Object.keys(lock.messages).sort()).toEqual(["a.B", "a.B.Address"]);
+    expect(Object.keys(lock.enums)).toEqual(["a.B.Role"]);
+  });
+
+  it("cascades to every cross-reference elsewhere in the lockfile", () => {
+    const lock: LockFile = {
+      version: 1,
+      messages: {
+        "a.A": { nextField: 1, fields: {}, reserved: [] },
+        "a.A.Address": { nextField: 1, fields: {}, reserved: [] },
+        "a.Other": {
+          nextField: 3,
+          fields: {
+            owner: { number: 1, type: "a.A", label: "singular" },
+            address: { number: 2, type: "a.A.Address", label: "singular" },
+          },
+          reserved: [],
+        },
+      },
+      enums: {
+        "a.A.Role": { nextValue: 2, values: { ROLE_ADMIN: 1 }, reserved: [] },
+      },
+    };
+    // a field elsewhere referencing the nested enum
+    lock.messages["a.Other"]!.fields.role = { number: 3, type: "enum:a.A.Role", label: "singular" };
+    lock.messages["a.Other"]!.nextField = 4;
+
+    renameMessage(lock, "a.A", "a.B");
+
+    const other = lock.messages["a.Other"]!;
+    expect(other.fields.owner!.type).toBe("a.B");
+    expect(other.fields.address!.type).toBe("a.B.Address");
+    expect(other.fields.role!.type).toBe("enum:a.B.Role");
+  });
+
+  it("throws when the old message isn't in the lockfile", () => {
+    expect(() => renameMessage(emptyLock(), "a.Missing", "a.New")).toThrow(RenameError);
+  });
+
+  it("throws when the new full name already exists", () => {
+    const lock = emptyLock();
+    syncMessage(msg("a.A", []), lock, { allowBreaking: false });
+    syncMessage(msg("a.B", []), lock, { allowBreaking: false });
+    expect(() => renameMessage(lock, "a.A", "a.B")).toThrow(RenameError);
+  });
+});
+
+describe("renameEnumValue", () => {
+  function enumIR(fullName: string, values: string[]): IREnum {
+    return { fullName, values: values.map((v) => ({ name: v.toUpperCase(), zodValue: v })), reserved: [] };
+  }
+
+  it("moves the value to the new name, keeping its number", () => {
+    const lock = emptyLock();
+    syncEnum(enumIR("a.A.Role", ["admin", "member"]), lock);
+
+    renameEnumValue(lock, "a.A.Role", "MEMBER", "USER");
+
+    const entry = lock.enums["a.A.Role"]!;
+    expect(entry.values.MEMBER).toBeUndefined();
+    expect(entry.values.USER).toBe(2);
+    expect(entry.values.ADMIN).toBe(1);
+  });
+
+  it("throws when the enum isn't in the lockfile", () => {
+    expect(() => renameEnumValue(emptyLock(), "a.Missing", "X", "Y")).toThrow(RenameError);
+  });
+
+  it("throws a specific message when the old value is reserved, not active", () => {
+    const lock = emptyLock();
+    syncEnum(enumIR("a.A.Role", ["admin", "member"]), lock);
+    syncEnum(enumIR("a.A.Role", ["admin"]), lock); // member -> reserved
+    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "USER")).toThrow(/reserved/);
+  });
+
+  it("throws when the new name collides with an active value", () => {
+    const lock = emptyLock();
+    syncEnum(enumIR("a.A.Role", ["admin", "member"]), lock);
+    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "ADMIN")).toThrow(RenameError);
   });
 });

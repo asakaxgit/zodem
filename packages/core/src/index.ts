@@ -13,6 +13,9 @@ export {
   markRemovedEntries,
   typeKey,
   isWireCompatible,
+  renameField,
+  renameMessage,
+  renameEnumValue,
 } from "./lock.js";
 export type { LockFile, LockMessageEntry, LockEnumEntry, LockFieldEntry, SyncOptions, SyncResult } from "./lock.js";
 export * from "./errors.js";

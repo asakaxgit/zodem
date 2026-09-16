@@ -2,6 +2,7 @@ import type { IREnum, IRField, IRLabel, IRMessage, IRReserved, IRType } from "./
 import {
   BreakingChangeError,
   LockfileValidationError,
+  RenameError,
   ZodemError,
   PinnedNumberMismatchError,
 } from "./errors.js";
@@ -383,4 +384,111 @@ export function validateLock(lock: LockFile): void {
   for (const [name, entry] of Object.entries(lock.enums ?? {})) {
     validateEnumNumbers(name, entry.values, entry.reserved, entry.nextValue);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Renames (handoff §7.5): identity is by name, so a rename must go through
+// here rather than looking like delete-old + add-new to `syncMessage`.
+// ---------------------------------------------------------------------------
+
+/** Rewrites a stored type reference (a `LockFieldEntry.type`, or a `messages`/`enums` key) for a message rename. */
+function renamedTypeRef(typeStr: string, oldFullName: string, newFullName: string): string {
+  const isEnum = typeStr.startsWith("enum:");
+  const bare = isEnum ? typeStr.slice(5) : typeStr;
+  const renamed =
+    bare === oldFullName
+      ? newFullName
+      : bare.startsWith(`${oldFullName}.`)
+        ? newFullName + bare.slice(oldFullName.length)
+        : bare;
+  return isEnum ? `enum:${renamed}` : renamed;
+}
+
+/** Renames a field within one message, preserving its number, type, and label. Does not touch the Zod schema. */
+export function renameField(lock: LockFile, messageFullName: string, oldName: string, newName: string): void {
+  const entry = lock.messages[messageFullName];
+  if (!entry) {
+    throw new RenameError(`"${messageFullName}" is not in the lockfile.`);
+  }
+  if (!(oldName in entry.fields)) {
+    if (entry.reserved.some((r) => r.name === oldName)) {
+      throw new RenameError(
+        `"${messageFullName}.${oldName}" is already reserved (removed), not an active field — it can't be renamed.`,
+      );
+    }
+    throw new RenameError(`"${messageFullName}" has no active field named "${oldName}".`);
+  }
+  if (newName in entry.fields) {
+    throw new RenameError(`"${messageFullName}" already has a field named "${newName}".`);
+  }
+  if (entry.reserved.some((r) => r.name === newName)) {
+    throw new RenameError(
+      `"${newName}" is a reserved name on "${messageFullName}" (a previously removed field) and can't be reused.`,
+    );
+  }
+  const field = entry.fields[oldName] as LockFieldEntry;
+  delete entry.fields[oldName];
+  entry.fields[newName] = field;
+}
+
+/**
+ * Renames a message, cascading to any nested messages/enums and to every
+ * field elsewhere in the lockfile that references the renamed message (or
+ * something nested inside it) by type.
+ */
+export function renameMessage(lock: LockFile, oldFullName: string, newFullName: string): void {
+  const entry = lock.messages[oldFullName];
+  if (!entry) {
+    throw new RenameError(`"${oldFullName}" is not in the lockfile.`);
+  }
+  if (newFullName in lock.messages) {
+    throw new RenameError(`"${newFullName}" already exists in the lockfile.`);
+  }
+
+  for (const [key, msgEntry] of Object.entries(lock.messages)) {
+    const renamedKey = renamedTypeRef(key, oldFullName, newFullName);
+    if (renamedKey !== key) {
+      delete lock.messages[key];
+      lock.messages[renamedKey] = msgEntry;
+    }
+  }
+  for (const [key, enumEntry] of Object.entries(lock.enums)) {
+    const renamedKey = renamedTypeRef(key, oldFullName, newFullName);
+    if (renamedKey !== key) {
+      delete lock.enums[key];
+      lock.enums[renamedKey] = enumEntry;
+    }
+  }
+  for (const msgEntry of Object.values(lock.messages)) {
+    for (const field of Object.values(msgEntry.fields)) {
+      field.type = renamedTypeRef(field.type, oldFullName, newFullName);
+    }
+  }
+}
+
+/** Renames an enum value within one enum, preserving its number. Does not touch the Zod schema. */
+export function renameEnumValue(lock: LockFile, enumFullName: string, oldName: string, newName: string): void {
+  const entry = lock.enums[enumFullName];
+  if (!entry) {
+    throw new RenameError(`"${enumFullName}" is not in the lockfile.`);
+  }
+  if (!(oldName in entry.values)) {
+    if (entry.reserved.some((r) => r.name === oldName)) {
+      throw new RenameError(
+        `"${enumFullName}.${oldName}" is already reserved (removed), not an active value — it can't be renamed.`,
+      );
+    }
+    throw new RenameError(`"${enumFullName}" has no active value named "${oldName}".`);
+  }
+  if (newName in entry.values) {
+    throw new RenameError(`"${enumFullName}" already has a value named "${newName}".`);
+  }
+  if (entry.reserved.some((r) => r.name === newName)) {
+    throw new RenameError(
+      `"${newName}" is a reserved name on "${enumFullName}" (a previously removed value) and can't be reused.`,
+    );
+  }
+  const number = entry.values[oldName] as number;
+  delete entry.values[oldName];
+  entry.values[newName] = number;
 }

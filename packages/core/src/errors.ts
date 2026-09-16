@@ -47,3 +47,6 @@ export class DuplicateRegistrationError extends ZodemError {
     super(`"${fullName}" is already registered. Full names must be unique across the schema.`);
   }
 }
+
+/** A `zodem rename` command couldn't be applied to the lockfile as given. */
+export class RenameError extends ZodemError {}
