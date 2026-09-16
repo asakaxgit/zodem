@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { zodem, resetRegistry, walkRegistry, syncMessage, syncEnum, type IRMessage } from "@zodem/core";
 import { loadLock } from "@zodem/core/node";
-import { emitProto, outputPathFor } from "../src/emit.js";
+import type { IRService } from "@zodem/core";
+import { emitProto, outputPathFor, computeFileImports } from "../src/emit.js";
 
 beforeEach(() => {
   resetRegistry();
@@ -69,6 +70,54 @@ describe("emitProto: reserved fields survive removal", () => {
     const text = emitProto({ package: "acme.user.v1", messages: walked2.messages, services: [], imports: [] });
     expect(text).toContain("reserved 2;");
     expect(text).toContain('reserved "y";');
+  });
+});
+
+function msg(fullName: string, fields: IRMessage["fields"], nestedMessages: IRMessage[] = []): IRMessage {
+  return { fullName, fields, oneofs: [], nested: { messages: nestedMessages, enums: [] }, reserved: [] };
+}
+
+describe("computeFileImports", () => {
+  it("adds nothing for a same-package reference", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"], ["acme.a.v1.B", "acme.a.v1"]]);
+    const a = msg("acme.a.v1.A", [{ name: "b", jsonName: "b", type: { kind: "message", fullName: "acme.a.v1.B" }, label: "singular", warnings: [] }]);
+    expect(computeFileImports([a], [], "acme.a.v1", owner)).toEqual([]);
+  });
+
+  it("imports the other package's file for a cross-package message reference", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"], ["acme.b.v1.B", "acme.b.v1"]]);
+    const a = msg("acme.a.v1.A", [{ name: "b", jsonName: "b", type: { kind: "message", fullName: "acme.b.v1.B" }, label: "singular", warnings: [] }]);
+    expect(computeFileImports([a], [], "acme.a.v1", owner)).toEqual(["acme/b/v1/b.proto"]);
+  });
+
+  it("adds the matching WKT import", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"]]);
+    const a = msg("acme.a.v1.A", [
+      { name: "created_at", jsonName: "createdAt", type: { kind: "wkt", fullName: "google.protobuf.Timestamp" }, label: "singular", warnings: [] },
+    ]);
+    expect(computeFileImports([a], [], "acme.a.v1", owner)).toEqual(["google/protobuf/timestamp.proto"]);
+  });
+
+  it("recurses into a map value and a nested message", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"], ["acme.a.v1.A.Inner", "acme.a.v1"], ["acme.b.v1.B", "acme.b.v1"]]);
+    const inner = msg("acme.a.v1.A.Inner", [
+      { name: "b", jsonName: "b", type: { kind: "message", fullName: "acme.b.v1.B" }, label: "singular", warnings: [] },
+    ]);
+    const a = msg(
+      "acme.a.v1.A",
+      [{ name: "byKey", jsonName: "byKey", type: { kind: "map", key: "string", value: { kind: "message", fullName: "acme.b.v1.B" } }, label: "singular", warnings: [] }],
+      [inner],
+    );
+    expect(computeFileImports([a], [], "acme.a.v1", owner)).toEqual(["acme/b/v1/b.proto"]);
+  });
+
+  it("checks service method input/output types too", () => {
+    const owner = new Map([["acme.a.v1.GetXRequest", "acme.a.v1"], ["acme.b.v1.GetXResponse", "acme.b.v1"]]);
+    const svc: IRService = {
+      fullName: "acme.a.v1.XService",
+      methods: [{ name: "GetX", input: "acme.a.v1.GetXRequest", output: "acme.b.v1.GetXResponse", clientStreaming: false, serverStreaming: false, warnings: [] }],
+    };
+    expect(computeFileImports([], [svc], "acme.a.v1", owner)).toEqual(["acme/b/v1/b.proto"]);
   });
 });
 

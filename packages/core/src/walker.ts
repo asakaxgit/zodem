@@ -33,6 +33,8 @@ export class WalkerContext {
   visiting = new Set<AnySchema>();
   messageCache = new Map<AnySchema, string>();
   enumCache = new Map<AnySchema, IREnum>();
+  /** lazy wrappers currently being unwrapped, keyed by the z.lazy() schema itself (stable identity) */
+  visitingLazy = new Set<AnySchema>();
 
   addImport(path: string): void {
     this.imports.add(path);
@@ -70,6 +72,15 @@ interface UnwrapResult {
   nullable: boolean;
   meta: ZodemFieldMeta;
   warnings: string[];
+  /**
+   * z.lazy() schemas consumed to reach this result, still marked "in
+   * progress" in `ctx.visitingLazy`. The caller that eventually resolves a
+   * concrete type from this result (`resolveConcreteType`) is responsible
+   * for clearing them — not `unwrap()` itself, since for an anonymous
+   * (unregistered) recursive schema the real re-entrance happens later,
+   * inside the nested object-shape walk, not during unwrap.
+   */
+  lazyChain: AnySchema[];
 }
 
 function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
@@ -83,6 +94,7 @@ function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
     nullable: patch.nullable ?? inner.nullable,
     meta: { ...inner.meta, ...ownMeta },
     warnings: [...inner.warnings, ...(patch.warnings ?? [])],
+    lazyChain: patch.lazyChain ?? inner.lazyChain,
   });
 
   switch (def.type) {
@@ -106,8 +118,19 @@ function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
           : [`.pipe() target schema is ignored for the wire type; the input side is used instead`],
       });
     }
+    case "lazy": {
+      if (ctx.visitingLazy.has(schema)) {
+        throw new UnsupportedTypeError(
+          "<lazy>",
+          "self-referential z.lazy() without a registered zodem.message() has no stable identity to reference; wrap the recursive type in zodem.message() so z.lazy(() => TheMessage) can point at it by name",
+        );
+      }
+      ctx.visitingLazy.add(schema);
+      const inner = unwrap(def.getter(), ctx);
+      return wrap(inner, { lazyChain: [...inner.lazyChain, schema] });
+    }
     default:
-      return { schema, def, optional: false, nullable: false, meta: ownMeta, warnings: [] };
+      return { schema, def, optional: false, nullable: false, meta: ownMeta, warnings: [], lazyChain: [] };
   }
 }
 
@@ -244,6 +267,54 @@ function finalize(
   return { type, label, nullable: opts.nullable, warnings };
 }
 
+// proto3 map keys are string or an integral/bool scalar — no float, double, bytes, message, or enum.
+const MAP_KEY_SCALARS = new Set<ScalarName>([
+  "string",
+  "bool",
+  "int32",
+  "int64",
+  "uint32",
+  "uint64",
+  "sint32",
+  "sint64",
+  "fixed32",
+  "fixed64",
+  "sfixed32",
+  "sfixed64",
+]);
+
+/**
+ * proto3 disallows a repeated or map type nested directly inside another
+ * repeated or map (array-of-array, map-of-array, map-of-map). Instead of
+ * erroring, synthesize a one-field wrapper message — this cascades cleanly
+ * for arbitrary depth, since each level only ever wraps its immediate child.
+ */
+function wrapCollectionIfNeeded(resolved: Finalized, currentMessage: IRMessage, namePreference: string): IRType {
+  if (resolved.label !== "repeated" && resolved.type.kind !== "map") {
+    return resolved.type;
+  }
+  // Depth-unique name: if what we're wrapping is itself already a wrapper
+  // message (array-of-array-of-array, ...), base the new name on *its*
+  // short name rather than reusing `namePreference` at every level — reusing
+  // it would collide with the inner wrapper's name and silently reuse the
+  // wrong message.
+  const baseName = resolved.type.kind === "message" ? (resolved.type.fullName.split(".").pop() as string) : namePreference;
+  const wrapperName = `${currentMessage.fullName}.${baseName}List`;
+  let wrapper = currentMessage.nested.messages.find((m) => m.fullName === wrapperName);
+  if (!wrapper) {
+    wrapper = {
+      fullName: wrapperName,
+      fields: [{ name: "values", jsonName: "values", type: resolved.type, label: resolved.label, warnings: [] }],
+      oneofs: [],
+      nested: { messages: [], enums: [] },
+      reserved: [],
+      isListWrapper: true,
+    };
+    currentMessage.nested.messages.push(wrapper);
+  }
+  return { kind: "message", fullName: wrapperName };
+}
+
 // ---------------------------------------------------------------------------
 // Concrete type resolution
 // ---------------------------------------------------------------------------
@@ -254,7 +325,26 @@ function resolveConcreteType(
   ctx: WalkerContext,
   path: string,
   namePreference: string,
-  allowRepeated: boolean,
+  allowNullableWrapper: boolean,
+): Finalized {
+  // Any z.lazy() schemas consumed to reach `unwrapped` stay marked "in
+  // progress" for this whole call, including any nested object-shape walk
+  // below (e.g. the "object" case's walkObjectIntoMessage) — that's what
+  // lets an unregistered self-referential lazy schema be caught as a real
+  // re-entrance instead of unwinding cleanly and stack-overflowing later.
+  try {
+    return resolveConcreteTypeInner(unwrapped, currentMessage, ctx, path, namePreference, allowNullableWrapper);
+  } finally {
+    for (const lazySchema of unwrapped.lazyChain) ctx.visitingLazy.delete(lazySchema);
+  }
+}
+
+function resolveConcreteTypeInner(
+  unwrapped: UnwrapResult,
+  currentMessage: IRMessage,
+  ctx: WalkerContext,
+  path: string,
+  namePreference: string,
   allowNullableWrapper: boolean,
 ): Finalized {
   const { schema, def, optional, nullable, meta } = unwrapped;
@@ -273,9 +363,6 @@ function resolveConcreteType(
 
   switch (def.type) {
     case "array": {
-      if (!allowRepeated) {
-        throw new UnsupportedTypeError(path, "arrays of arrays are not supported; wrap the inner array in a message");
-      }
       if (nullable) {
         throw new UnsupportedTypeError(
           path,
@@ -289,16 +376,38 @@ function resolveConcreteType(
           "array elements cannot be optional/nullable in proto3; move the modifier to the whole field",
         );
       }
-      const element = resolveConcreteType(elementUnwrapped, currentMessage, ctx, `${path}[]`, namePreference, false, false);
-      return { type: element.type, label: "repeated", nullable: false, warnings: [...warnings, ...element.warnings] };
+      const element = resolveConcreteType(elementUnwrapped, currentMessage, ctx, `${path}[]`, namePreference, false);
+      const elementType = wrapCollectionIfNeeded(element, currentMessage, namePreference);
+      return { type: elementType, label: "repeated", nullable: false, warnings: [...warnings, ...element.warnings] };
     }
-    case "record":
-      throw new UnsupportedTypeError(
-        path,
-        "z.record() (map<>) is not supported yet (planned for Phase 2); model it as z.array(z.object({ key, value }))",
-      );
-    case "lazy":
-      throw new UnsupportedTypeError(path, "recursive schemas (z.lazy) are not supported yet (planned for Phase 2)");
+    case "record": {
+      const keyUnwrapped = unwrap(def.keyType, ctx);
+      if (keyUnwrapped.optional || keyUnwrapped.nullable) {
+        throw new UnsupportedTypeError(`${path}{key}`, "map keys cannot be optional/nullable");
+      }
+      const keyResolved = resolveConcreteType(keyUnwrapped, currentMessage, ctx, `${path}{key}`, namePreference, false);
+      if (keyResolved.type.kind !== "scalar" || !MAP_KEY_SCALARS.has(keyResolved.type.name)) {
+        const got = keyResolved.type.kind === "scalar" ? keyResolved.type.name : keyResolved.type.kind;
+        throw new UnsupportedTypeError(
+          path,
+          `map keys must be string or an integral/bool scalar, got "${got}" — proto3 map keys can't be float, double, bytes, message, or enum`,
+        );
+      }
+
+      const valueUnwrapped = unwrap(def.valueType, ctx);
+      if (valueUnwrapped.optional || valueUnwrapped.nullable) {
+        throw new UnsupportedTypeError(`${path}{value}`, "map values cannot be optional/nullable in proto3");
+      }
+      const valueResolved = resolveConcreteType(valueUnwrapped, currentMessage, ctx, `${path}{value}`, namePreference, false);
+      const valueType = wrapCollectionIfNeeded(valueResolved, currentMessage, namePreference);
+
+      return {
+        type: { kind: "map", key: keyResolved.type.name, value: valueType },
+        label: "singular",
+        nullable: false,
+        warnings: [...warnings, ...keyResolved.warnings, ...valueResolved.warnings],
+      };
+    }
     case "object": {
       const nestedFullName = `${currentMessage.fullName}.${namePreference}`;
       if (ctx.visiting.has(schema)) {
@@ -434,7 +543,7 @@ function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMes
     return;
   }
 
-  const resolved = resolveConcreteType(unwrapped, currentMessage, ctx, path, namePreference, true, true);
+  const resolved = resolveConcreteType(unwrapped, currentMessage, ctx, path, namePreference, true);
   currentMessage.fields.push({
     name: camelToSnake(key),
     jsonName: key,

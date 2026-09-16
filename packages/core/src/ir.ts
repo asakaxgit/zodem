@@ -77,6 +77,15 @@ export interface IRMessage {
   nested: { messages: IRMessage[]; enums: IREnum[] };
   /** filled by lock sync */
   reserved: IRReserved[];
+  /**
+   * True for a synthesized `{ repeated/map values = 1; }` wrapper (from a
+   * nested repeated/map type with no direct proto3 representation). It
+   * exists only on the wire — there is no corresponding Zod wrapper object,
+   * just a plain array/record — so a codec must transparently wrap/unwrap
+   * `{ values: ... }` around the raw value instead of treating this like an
+   * ordinary user-defined message.
+   */
+  isListWrapper?: boolean;
 }
 
 export interface IREnumValue {

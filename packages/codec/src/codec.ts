@@ -60,6 +60,34 @@ function compileWkt(fullName: WellKnownTypeName): { encode: (v: unknown) => unkn
   return { encode: identity, decode: identity };
 }
 
+/**
+ * A synthesized `{ repeated/map values = 1; }` wrapper (see IRMessage.
+ * isListWrapper) exists only on the proto side — there is no corresponding
+ * Zod wrapper object, just a plain array/record — so encode/decode operate
+ * directly on the raw value and transparently add/remove the `{ values }`
+ * layer, instead of going through the normal per-field message machinery
+ * (which would expect a real `values` property on the Zod side).
+ */
+function compileListWrapper(
+  target: IRMessage,
+  ctx: CompileCtx,
+  path: string,
+): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
+  const innerField = target.fields[0] as IRField;
+  const single = compileScalarLike(innerField.type, ctx, path);
+  const values =
+    innerField.label === "repeated"
+      ? {
+          encode: (v: unknown) => (Array.isArray(v) ? v.map(single.encode) : []),
+          decode: (v: unknown) => (Array.isArray(v) ? v.map(single.decode) : []),
+        }
+      : single; // map-of-map: innerField.label is "singular" with type.kind "map"
+  return {
+    encode: (v) => ({ values: values.encode(v) }),
+    decode: (v) => values.decode((v as Record<string, unknown>).values),
+  };
+}
+
 function compileScalarLike(
   type: IRType,
   ctx: CompileCtx,
@@ -73,6 +101,7 @@ function compileScalarLike(
     case "message": {
       const target = ctx.allMessages.get(type.fullName);
       if (!target) throw new Error(`codec: unknown message "${type.fullName}" referenced at ${path}`);
+      if (target.isListWrapper) return compileListWrapper(target, ctx, path);
       const compiled = compileMessage(target, ctx);
       return {
         encode: (v) => compiled.encode(v as Record<string, unknown>),
@@ -97,8 +126,27 @@ function compileScalarLike(
         },
       };
     }
-    case "map":
-      throw new Error(`codec: map<> fields are not supported yet (at ${path})`);
+    case "map": {
+      // Zod's z.record() is always a plain JS object at runtime — its "key
+      // schema" is a validation-time constraint, not a different runtime
+      // key type — and protobuf-es likewise represents proto map fields as
+      // plain objects. Both sides use string keys end-to-end; a proto
+      // integer/bool map key is a known limitation here, not yet exercised
+      // by anything in this codebase.
+      const valueCodec = compileScalarLike(type.value, ctx, `${path}{value}`);
+      return {
+        encode: (v) => {
+          const out: Record<string, unknown> = {};
+          for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = valueCodec.encode(val);
+          return out;
+        },
+        decode: (v) => {
+          const out: Record<string, unknown> = {};
+          for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = valueCodec.decode(val);
+          return out;
+        },
+      };
+    }
   }
 }
 
@@ -176,16 +224,30 @@ function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
   const cached = ctx.cache.get(msg.fullName);
   if (cached) return cached;
 
-  // Placeholder guards against z.lazy-style self-reference (unsupported by
-  // the walker today, but cheap insurance against an infinite loop here).
-  ctx.cache.set(msg.fullName, {
-    encode: () => {
-      throw new Error(`codec: "${msg.fullName}" used before its own compilation finished (circular reference?)`);
+  // Placeholder for the z.lazy() self-reference case: a recursive field
+  // (compileField -> compileScalarLike -> compileMessage(msg again)) hits
+  // the cache check above and captures a reference to *this* placeholder
+  // object before `compiled` below exists. It must therefore delegate by
+  // re-reading the cache at call time, not throw unconditionally — encode/
+  // decode are only ever actually invoked later, at runtime, long after
+  // `compiled` has replaced this entry.
+  const placeholder: CompiledMessage = {
+    encode: (v) => {
+      const real = ctx.cache.get(msg.fullName);
+      if (!real || real === placeholder) {
+        throw new Error(`codec: "${msg.fullName}" used before its own compilation finished`);
+      }
+      return real.encode(v);
     },
-    decode: () => {
-      throw new Error(`codec: "${msg.fullName}" used before its own compilation finished (circular reference?)`);
+    decode: (v) => {
+      const real = ctx.cache.get(msg.fullName);
+      if (!real || real === placeholder) {
+        throw new Error(`codec: "${msg.fullName}" used before its own compilation finished`);
+      }
+      return real.decode(v);
     },
-  });
+  };
+  ctx.cache.set(msg.fullName, placeholder);
 
   const fieldPlans = msg.fields.filter((f) => !f.oneof).map((f) => compileField(f, ctx));
   const oneofPlans = msg.oneofs.map((o) => compileOneof(o, msg, ctx));

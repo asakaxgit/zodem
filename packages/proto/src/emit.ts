@@ -1,4 +1,4 @@
-import type { IREnum, IRField, IRMessage, IRReserved, IRService, IRType } from "@zodem/core";
+import type { IREnum, IRField, IRMessage, IRReserved, IRService, IRType, WellKnownTypeName } from "@zodem/core";
 import { upperSnake } from "@zodem/core";
 
 export interface EmitFileInput {
@@ -150,4 +150,81 @@ export function outputPathFor(packageName: string): string {
   const isVersion = VERSION_SEGMENT.test(last) && segments.length > 1;
   const fileBase = isVersion ? segments[segments.length - 2] : last;
   return `${segments.join("/")}/${fileBase}.proto`;
+}
+
+const WKT_IMPORT: Partial<Record<WellKnownTypeName, string>> = {
+  "google.protobuf.Timestamp": "google/protobuf/timestamp.proto",
+  "google.protobuf.Value": "google/protobuf/struct.proto",
+  "google.protobuf.Struct": "google/protobuf/struct.proto",
+  "google.protobuf.DoubleValue": "google/protobuf/wrappers.proto",
+  "google.protobuf.FloatValue": "google/protobuf/wrappers.proto",
+  "google.protobuf.Int64Value": "google/protobuf/wrappers.proto",
+  "google.protobuf.UInt64Value": "google/protobuf/wrappers.proto",
+  "google.protobuf.Int32Value": "google/protobuf/wrappers.proto",
+  "google.protobuf.UInt32Value": "google/protobuf/wrappers.proto",
+  "google.protobuf.BoolValue": "google/protobuf/wrappers.proto",
+  "google.protobuf.StringValue": "google/protobuf/wrappers.proto",
+  "google.protobuf.BytesValue": "google/protobuf/wrappers.proto",
+};
+
+function collectTypeImports(
+  type: IRType,
+  selfPackage: string,
+  typeOwnerPackage: ReadonlyMap<string, string>,
+  out: Set<string>,
+): void {
+  switch (type.kind) {
+    case "scalar":
+      return;
+    case "wkt": {
+      const imp = WKT_IMPORT[type.fullName];
+      if (imp) out.add(imp);
+      return;
+    }
+    case "message":
+    case "enum": {
+      const owner = typeOwnerPackage.get(type.fullName);
+      if (owner && owner !== selfPackage) out.add(outputPathFor(owner));
+      return;
+    }
+    case "map":
+      collectTypeImports(type.value, selfPackage, typeOwnerPackage, out);
+      return;
+  }
+}
+
+function collectMessageImports(
+  msg: IRMessage,
+  selfPackage: string,
+  typeOwnerPackage: ReadonlyMap<string, string>,
+  out: Set<string>,
+): void {
+  for (const f of msg.fields) collectTypeImports(f.type, selfPackage, typeOwnerPackage, out);
+  for (const nested of msg.nested.messages) collectMessageImports(nested, selfPackage, typeOwnerPackage, out);
+}
+
+/**
+ * Every import a package's generated file needs: WKT imports (Timestamp,
+ * wrapper types, ...) plus one `import` per *other* package referenced by
+ * any message/enum type anywhere in this package's messages or services —
+ * `typeOwnerPackage` maps every message/enum full name (including nested
+ * ones) to the package of its top-level ancestor.
+ */
+export function computeFileImports(
+  messages: readonly IRMessage[],
+  services: readonly IRService[],
+  selfPackage: string,
+  typeOwnerPackage: ReadonlyMap<string, string>,
+): string[] {
+  const out = new Set<string>();
+  for (const msg of messages) collectMessageImports(msg, selfPackage, typeOwnerPackage, out);
+  for (const svc of services) {
+    for (const m of svc.methods) {
+      for (const fullName of [m.input, m.output]) {
+        const owner = typeOwnerPackage.get(fullName);
+        if (owner && owner !== selfPackage) out.add(outputPathFor(owner));
+      }
+    }
+  }
+  return [...out].sort();
 }

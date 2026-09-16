@@ -104,3 +104,79 @@ describe("codec: discriminated union <-> oneof ADT", () => {
     expect(codec.decode({})).toEqual({});
   });
 });
+
+describe("codec: maps", () => {
+  it("round-trips a map<string, string>", () => {
+    zodem.message("acme.a.v1.A", { tags: z.record(z.string(), z.string()) });
+    const codec = createCodecs(synced()).get("acme.a.v1.A")!;
+    const value = { tags: { en: "hello", ja: "こんにちは" } };
+    expect(codec.encode(value)).toEqual({ tags: { en: "hello", ja: "こんにちは" } });
+    expect(codec.decode(codec.encode(value) as Record<string, unknown>)).toEqual(value);
+  });
+
+  it("runs the value codec per entry (map<string, enum>)", () => {
+    zodem.message("acme.a.v1.A", { rolesByUser: z.record(z.string(), z.enum(["admin", "member"])) });
+    const codec = createCodecs(synced()).get("acme.a.v1.A")!;
+    const value = { rolesByUser: { alice: "admin" as const, bob: "member" as const } };
+    const proto = codec.encode(value);
+    expect(proto.rolesByUser).toEqual({ alice: 1, bob: 2 }); // ROLE_ADMIN=1, ROLE_MEMBER=2
+    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+  });
+});
+
+describe("codec: z.lazy() recursion", () => {
+  it("round-trips a self-referential tree without hitting the stale-placeholder bug", () => {
+    interface CategoryShape {
+      name: string;
+      children: CategoryShape[];
+    }
+    let Category!: z.ZodType<CategoryShape>;
+    Category = zodem.message("acme.cat.v1.Category", {
+      name: z.string(),
+      children: z.array(z.lazy(() => Category)),
+    }) as unknown as z.ZodType<CategoryShape>;
+
+    const codec = createCodecs(synced()).get("acme.cat.v1.Category")!;
+    // non-empty children is essential here: an empty array never actually
+    // *invokes* the recursive field's encode/decode closure, so it would not
+    // have caught the placeholder bug this test exists to guard against.
+    const value: CategoryShape = {
+      name: "root",
+      children: [
+        { name: "child-1", children: [] },
+        { name: "child-2", children: [{ name: "grandchild", children: [] }] },
+      ],
+    };
+
+    const proto = codec.encode(value as unknown as Record<string, unknown>);
+    expect(proto.children).toHaveLength(2);
+    expect((proto.children as Record<string, unknown>[])[1]!.children).toHaveLength(1);
+
+    const back = codec.decode(proto as Record<string, unknown>);
+    expect(back).toEqual(value);
+  });
+});
+
+describe("codec: synthesized list-wrapper messages (nested repeated/map values)", () => {
+  it("round-trips array-of-array as a plain nested array, not a { values } object", () => {
+    zodem.message("acme.a.v1.A", { matrix: z.array(z.array(z.string())) });
+    const codec = createCodecs(synced()).get("acme.a.v1.A")!;
+    const value = { matrix: [["a", "b"], ["c"]] };
+
+    const proto = codec.encode(value);
+    // on the wire this is `repeated MatrixList matrix`, each a { values: [...] } message —
+    // but the codec must hide that entirely; the Zod side never sees a wrapper object.
+    expect(proto.matrix).toEqual([{ values: ["a", "b"] }, { values: ["c"] }]);
+    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+  });
+
+  it("round-trips a map value that's an array, as a plain array, not a { values } object", () => {
+    zodem.message("acme.a.v1.A", { groups: z.record(z.string(), z.array(z.string())) });
+    const codec = createCodecs(synced()).get("acme.a.v1.A")!;
+    const value = { groups: { fruits: ["apple", "banana"], veggies: ["carrot"] } };
+
+    const proto = codec.encode(value);
+    expect(proto.groups).toEqual({ fruits: { values: ["apple", "banana"] }, veggies: { values: ["carrot"] } });
+    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+  });
+});

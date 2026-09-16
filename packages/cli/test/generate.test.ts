@@ -295,3 +295,61 @@ describe("zodem rename: end-to-end", () => {
     expect(result.stderr).toMatch(/no active field named "does_not_exist"/);
   });
 });
+
+const SCHEMA_TWO_PACKAGES = `
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+
+export const Address = zodem.message("acme.address.v1.Address", {
+  city: z.string(),
+  country: z.string(),
+});
+
+export const User = zodem.message("acme.user.v1.User", {
+  id: z.string().uuid(),
+  address: Address,
+});
+`;
+
+describe("zodem generate: multi-package", () => {
+  function addressProtoPath(): string {
+    return join(root, "proto", "acme", "address", "v1", "address.proto");
+  }
+
+  it("writes one file per package, with a cross-package import, and both pass buf lint/build", () => {
+    writeProject(SCHEMA_TWO_PACKAGES);
+    const result = runCli(["generate"], root);
+    expect(result.status).toBe(0);
+    expect(existsSync(protoPath())).toBe(true);
+    expect(existsSync(addressProtoPath())).toBe(true);
+
+    const userProto = readFileSync(protoPath(), "utf8");
+    expect(userProto).toContain('import "acme/address/v1/address.proto";');
+    expect(userProto).toContain("acme.address.v1.Address address");
+
+    const addressProto = readFileSync(addressProtoPath(), "utf8");
+    expect(addressProto).not.toContain("import"); // Address doesn't reference anything outside its own package
+
+    writeFileSync(
+      join(root, "proto", "buf.yaml"),
+      "version: v2\nmodules:\n  - path: .\nlint:\n  use:\n    - STANDARD\n",
+      "utf8",
+    );
+    execFileSync(bufBin, ["lint"], { cwd: join(root, "proto"), stdio: "pipe" });
+    execFileSync(bufBin, ["build"], { cwd: join(root, "proto"), stdio: "pipe" });
+  });
+
+  it("--check catches staleness in either package's file", () => {
+    writeProject(SCHEMA_TWO_PACKAGES);
+    runCli(["generate"], root);
+    expect(runCli(["generate", "--check"], root).status).toBe(0);
+
+    // touch just the cross-package-referenced message
+    writeFileSync(
+      join(root, "schema.ts"),
+      SCHEMA_TWO_PACKAGES.replace("city: z.string(),", "city: z.string(),\n  zip: z.string().optional(),"),
+      "utf8",
+    );
+    expect(runCli(["generate", "--check"], root).status).not.toBe(0);
+  });
+});

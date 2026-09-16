@@ -10,9 +10,10 @@ import {
   syncMessage,
   walkRegistry,
   type IRMessage,
+  type IRService,
 } from "@zodem/core";
 import { loadLock, writeLock } from "@zodem/core/node";
-import { emitProto, outputPathFor } from "@zodem/proto";
+import { computeFileImports, emitProto, outputPathFor } from "@zodem/proto";
 import { loadConfig } from "./config.js";
 
 export interface GenerateOptions {
@@ -27,7 +28,7 @@ export interface GeneratedFile {
 }
 
 export interface GenerateResult {
-  /** true if the on-disk .proto output or lockfile would change (or did change, outside --check) */
+  /** true if any on-disk .proto output or the lockfile would change (or did change, outside --check) */
   changed: boolean;
   warnings: string[];
   files: GeneratedFile[];
@@ -39,6 +40,21 @@ function packageOf(fullName: string): string {
   const parts = fullName.split(".");
   parts.pop();
   return parts.join(".");
+}
+
+/** Every top-level message's own package, applied recursively to itself and everything nested under it. */
+function recordOwnership(msg: IRMessage, pkg: string, out: Map<string, string>): void {
+  out.set(msg.fullName, pkg);
+  for (const e of msg.nested.enums) out.set(e.fullName, pkg);
+  for (const nested of msg.nested.messages) recordOwnership(nested, pkg, out);
+}
+
+function groupByPackage(messages: IRMessage[], services: IRService[]): Map<string, { messages: IRMessage[]; services: IRService[] }> {
+  const groups = new Map<string, { messages: IRMessage[]; services: IRService[] }>();
+  const groupFor = (pkg: string) => groups.get(pkg) ?? groups.set(pkg, { messages: [], services: [] }).get(pkg)!;
+  for (const m of messages) groupFor(packageOf(m.fullName)).messages.push(m);
+  for (const s of services) groupFor(packageOf(s.fullName)).services.push(s);
+  return groups;
 }
 
 export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
@@ -59,29 +75,23 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     throw new Error(`no zodem.message() schemas were registered by the entry files`);
   }
 
-  const packages = new Set<string>();
-  for (const m of walked.messages) packages.add(packageOf(m.fullName));
-  for (const svc of walked.services) packages.add(packageOf(svc.fullName));
-  if (packages.size > 1) {
-    throw new Error(
-      `multiple packages found (${[...packages].join(", ")}); multi-package output is Phase 2, not yet supported`,
-    );
-  }
-  const packageName = [...packages][0] as string;
-
   const lockPath = resolve(root, config.lockfile);
   const lock = loadLock(lockPath);
 
   const warnings: string[] = [];
   const presentMessages = new Set<string>();
   const presentEnums = new Set<string>();
+  const typeOwnerPackage = new Map<string, string>();
 
   const collectNames = (msg: IRMessage): void => {
     presentMessages.add(msg.fullName);
     for (const e of msg.nested.enums) presentEnums.add(e.fullName);
     for (const nested of msg.nested.messages) collectNames(nested);
   };
-  for (const m of walked.messages) collectNames(m);
+  for (const m of walked.messages) {
+    collectNames(m);
+    recordOwnership(m, packageOf(m.fullName), typeOwnerPackage);
+  }
 
   const syncAll = (msg: IRMessage): void => {
     const res = syncMessage(msg, lock, { allowBreaking: opts.allowBreaking });
@@ -96,24 +106,28 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
 
   warnings.push(...markRemovedEntries(lock, presentMessages, presentEnums));
 
-  const protoText = emitProto({
-    package: packageName,
-    messages: walked.messages,
-    services: walked.services,
-    imports: walked.imports,
-  });
-  const protoPath = resolve(root, config.outDir, outputPathFor(packageName));
+  const groups = groupByPackage(walked.messages, walked.services);
+  const files: GeneratedFile[] = [];
+  for (const [packageName, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const protoText = emitProto({
+      package: packageName,
+      messages: group.messages,
+      services: group.services,
+      imports: computeFileImports(group.messages, group.services, packageName, typeOwnerPackage),
+    });
+    files.push({ path: resolve(root, config.outDir, outputPathFor(packageName)), content: protoText });
+  }
+
   const lockContent = serializeLock(lock);
-
-  const files: GeneratedFile[] = [{ path: protoPath, content: protoText }];
-
-  const protoChanged = !existsSync(protoPath) || readFileSync(protoPath, "utf8") !== protoText;
+  const protoChanged = files.some((f) => !existsSync(f.path) || readFileSync(f.path, "utf8") !== f.content);
   const lockChanged = !existsSync(lockPath) || readFileSync(lockPath, "utf8") !== lockContent;
   const changed = protoChanged || lockChanged;
 
   if (!opts.check) {
-    mkdirSync(dirname(protoPath), { recursive: true });
-    writeFileSync(protoPath, protoText, "utf8");
+    for (const f of files) {
+      mkdirSync(dirname(f.path), { recursive: true });
+      writeFileSync(f.path, f.content, "utf8");
+    }
     writeLock(lockPath, lock);
   }
 
