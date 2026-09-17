@@ -354,11 +354,14 @@ pnpm example:dev        # run the server and the web app together
 ```yaml
 # .github/workflows/ci.yml
 - run: pnpm run example:generate:check
+- run: pnpm run example:buf:lint
+- run: pnpm run example:buf:breaking  # optional: reports wire-breaking drift, doesn't block
 ```
 
 > Fails the build if the schemas changed but `proto/` or the lockfile weren't regenerated and
 > committed — this is the guarantee the whole project sells, so CI is where it's actually
-> enforced.
+> enforced. `buf breaking` runs on every PR against `main` as a non-blocking check — it reports
+> wire compatibility drift without gating the merge.
 
 ## Packages
 
@@ -377,7 +380,7 @@ pnpm example:dev        # run the server and the web app together
 | `zodem rename` for fields, messages, enum values | ✅ shipped |
 | Maps, `z.lazy()` recursion, collection wrapper messages, multi-package output | ✅ shipped |
 | `zodem.service()` → `service`/`rpc`, streaming, Connect codec | ✅ shipped |
-| Removed-type tombstoning, `buf breaking` as an optional CI check | 🟡 partial |
+| Removed-type tombstoning, `buf breaking` as an optional CI check | ✅ shipped |
 | Emit `buf.validate` (protovalidate) annotations from Zod checks (`min`, `email`, `regex`, …) | ⬜ planned |
 | **JSON Schema / LLM tool-call & structured-output emission from the same IR** | ⬜ planned |
 
