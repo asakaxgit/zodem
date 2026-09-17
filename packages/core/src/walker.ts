@@ -20,7 +20,7 @@ import { camelToSnake, pascalCase, upperSnake } from "./naming.js";
 // outside, so we treat it as `any` at the boundary and rely on tests +
 // buf-validated fixtures to catch drift, rather than fighting the type
 // checker over a shape that is intentionally loosely typed upstream.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: intentionally untyped Zod internals, see the comment above
 type AnyDef = Record<string, any>;
 type AnySchema = z.ZodType;
 
@@ -444,7 +444,7 @@ function resolveConcreteTypeInner(
     }
     case "literal": {
       const vals = def.values as unknown[];
-      if (!vals || vals.length !== 1) {
+      if (vals?.length !== 1) {
         throw new UnsupportedTypeError(path, "z.literal() with multiple values is not supported; use z.enum() instead");
       }
       const v = vals[0];
@@ -582,7 +582,7 @@ function processDiscriminatedUnion(
     }
     const discFieldDef = unwrap(discField, ctx).def;
     const literalValues = discFieldDef.type === "literal" ? (discFieldDef.values as unknown[]) : undefined;
-    if (!literalValues || literalValues.length !== 1 || typeof literalValues[0] !== "string") {
+    if (literalValues?.length !== 1 || typeof literalValues[0] !== "string") {
       throw new UnsupportedTypeError(
         path,
         `discriminator field "${discriminatorKey}" must be a single string z.literal() per branch`,

@@ -130,6 +130,7 @@ export function App() {
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the control is nested inside via `children`, just not visible to the static check
     <label style={{ display: "grid", gap: "0.25rem" }}>
       <span>{label}</span>
       {children}
