@@ -9,6 +9,8 @@ export interface ZodemConfig {
   outDir: string;
   /** path (relative to the config file) to the lockfile */
   lockfile: string;
+  /** emit protovalidate (buf.validate) field options from Zod checks. Default false — existing output stays byte-identical unless opted in. */
+  validate?: boolean;
 }
 
 export function defineConfig(config: ZodemConfig): ZodemConfig {

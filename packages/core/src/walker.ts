@@ -6,6 +6,8 @@ import type {
   IRLabel,
   IRMessage,
   IRMethod,
+  IRRuleSet,
+  IRRuleValue,
   IRService,
   IRType,
   ScalarName,
@@ -201,6 +203,154 @@ function resolveBigintScalar(def: AnyDef, meta: ZodemFieldMeta): ScalarName {
 }
 
 // ---------------------------------------------------------------------------
+// protovalidate (buf.validate) rule collection.
+//
+// Read straight off the same `def.checks` this file already scans for the
+// int32-range warning above, and always collected regardless of whether any
+// emitter renders them — a future JSON Schema emitter is one more consumer
+// of the same IR. Anything not in these tables is silently skipped, never
+// guessed: an unmapped Zod check produces no rule rather than a wrong one.
+// ---------------------------------------------------------------------------
+
+// z.email()/.uuid()/.url()/... set `format` on the schema's own def with no
+// check entry; z.string().email() etc. push a `string_format` check instead
+// (see findFormatCheck's dual-shape handling above) — a format can arrive
+// either way, so both are read the same way here.
+const STRING_FORMAT_RULE: Record<string, string> = {
+  email: "email",
+  uuid: "uuid",
+  guid: "uuid", // protovalidate has no separate "loose GUID" rule; uuid is the closest fit
+  url: "uri",
+  ipv4: "ipv4",
+  ipv6: "ipv6",
+};
+
+function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: AnyDef): void {
+  const format = cdef.format as string | undefined;
+  if (format === "regex" && cdef.pattern instanceof RegExp) {
+    // .source drops the slashes/flags; protovalidate's `pattern` (RE2, no flags support) can only take the bare pattern text.
+    rules.pattern = cdef.pattern.source;
+    return;
+  }
+  if (format === "starts_with" && typeof cdef.prefix === "string") {
+    rules.prefix = cdef.prefix;
+    return;
+  }
+  if (format === "ends_with" && typeof cdef.suffix === "string") {
+    rules.suffix = cdef.suffix;
+    return;
+  }
+  if (format === "includes" && typeof cdef.includes === "string") {
+    rules.contains = cdef.includes;
+    return;
+  }
+  const rule = format ? STRING_FORMAT_RULE[format] : undefined;
+  if (rule) rules[rule] = true;
+}
+
+function collectStringRules(def: AnyDef): Record<string, IRRuleValue> {
+  const rules: Record<string, IRRuleValue> = {};
+  if (typeof def.format === "string" && def.check === "string_format") applyStringFormat(rules, def);
+  for (const check of def.checks ?? []) {
+    const cdef = defOf(check);
+    switch (cdef?.check) {
+      case "min_length":
+        rules.min_len = Number(cdef.minimum);
+        break;
+      case "max_length":
+        rules.max_len = Number(cdef.maximum);
+        break;
+      case "length_equals":
+        rules.len = Number(cdef.length);
+        break;
+      case "string_format":
+        applyStringFormat(rules, cdef);
+        break;
+    }
+  }
+  return rules;
+}
+
+interface NumericBound {
+  value: number | bigint;
+  inclusive: boolean;
+}
+
+/** Tightest greater_than/less_than pair, preserving inclusive/exclusive (unlike scanNumericBounds above, which collapses to inclusive for the int32-range check). */
+function collectNumericBounds(def: AnyDef): { min?: NumericBound; max?: NumericBound } {
+  let min: NumericBound | undefined;
+  let max: NumericBound | undefined;
+  for (const check of def.checks ?? []) {
+    const cdef = defOf(check);
+    if (cdef?.check === "greater_than") {
+      const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
+      if (!min || Number(candidate.value) > Number(min.value) || (Number(candidate.value) === Number(min.value) && !candidate.inclusive)) {
+        min = candidate;
+      }
+    } else if (cdef?.check === "less_than") {
+      const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
+      if (!max || Number(candidate.value) < Number(max.value) || (Number(candidate.value) === Number(max.value) && !candidate.inclusive)) {
+        max = candidate;
+      }
+    }
+  }
+  return { min, max };
+}
+
+function collectNumericRules(def: AnyDef): Record<string, IRRuleValue> {
+  const rules: Record<string, IRRuleValue> = {};
+  const { min, max } = collectNumericBounds(def);
+  if (min) rules[min.inclusive ? "gte" : "gt"] = min.value;
+  if (max) rules[max.inclusive ? "lte" : "lt"] = max.value;
+  return rules;
+}
+
+const NUMERIC_RULE_GROUPS = new Set<ScalarName>([
+  "double",
+  "float",
+  "int32",
+  "int64",
+  "uint32",
+  "uint64",
+  "sint32",
+  "sint64",
+  "fixed32",
+  "fixed64",
+  "sfixed32",
+  "sfixed64",
+]);
+
+function collectRules(def: AnyDef, group: ScalarName): IRRuleSet | undefined {
+  let rules: Record<string, IRRuleValue>;
+  if (group === "string") {
+    rules = collectStringRules(def);
+  } else if (NUMERIC_RULE_GROUPS.has(group)) {
+    rules = collectNumericRules(def);
+  } else {
+    return undefined;
+  }
+  return Object.keys(rules).length > 0 ? { group, rules } : undefined;
+}
+
+// z.array().min()/.max()/.length() reuse the same "min_length"/"max_length"/
+// "length_equals" check kinds z.string() uses (arrays are measured by
+// `.length`, same as strings — "min_size"/"max_size" are for Set/Map-like
+// values measured by `.size`, which z.array() never produces).
+function collectArraySizeRules(def: AnyDef): Record<string, IRRuleValue> {
+  const rules: Record<string, IRRuleValue> = {};
+  for (const check of def.checks ?? []) {
+    const cdef = defOf(check);
+    if (cdef?.check === "min_length") rules.min_items = Number(cdef.minimum);
+    else if (cdef?.check === "max_length") rules.max_items = Number(cdef.maximum);
+    else if (cdef?.check === "length_equals") {
+      rules.min_items = Number(cdef.length);
+      rules.max_items = Number(cdef.length);
+    }
+  }
+  return rules;
+}
+
+// ---------------------------------------------------------------------------
 // Nullable -> google.protobuf.*Value wrapper mapping
 // ---------------------------------------------------------------------------
 
@@ -222,11 +372,20 @@ interface Finalized {
   /** true if `.nullable()` applied at this field (regardless of how it was represented) */
   nullable: boolean;
   warnings: string[];
+  rules?: IRRuleSet;
 }
 
 function finalize(
   baseType: IRType,
-  opts: { optional: boolean; nullable: boolean; allowNullableWrapper: boolean; path: string; warnings: string[]; ctx: WalkerContext },
+  opts: {
+    optional: boolean;
+    nullable: boolean;
+    allowNullableWrapper: boolean;
+    path: string;
+    warnings: string[];
+    ctx: WalkerContext;
+    rules?: IRRuleSet;
+  },
 ): Finalized {
   let type = baseType;
   let label: IRLabel;
@@ -264,7 +423,7 @@ function finalize(
     label = type.kind === "message" || type.kind === "wkt" ? "singular" : opts.optional ? "optional" : "singular";
   }
 
-  return { type, label, nullable: opts.nullable, warnings };
+  return { type, label, nullable: opts.nullable, warnings, rules: opts.rules };
 }
 
 // proto3 map keys are string or an integral/bool scalar — no float, double, bytes, message, or enum.
@@ -378,7 +537,11 @@ function resolveConcreteTypeInner(
       }
       const element = resolveConcreteType(elementUnwrapped, currentMessage, ctx, `${path}[]`, namePreference, false);
       const elementType = wrapCollectionIfNeeded(element, currentMessage, namePreference);
-      return { type: elementType, label: "repeated", nullable: false, warnings: [...warnings, ...element.warnings] };
+      const sizeRules = meta.validate === false ? {} : collectArraySizeRules(def);
+      const items = meta.validate === false ? undefined : element.rules;
+      const rules: IRRuleSet | undefined =
+        Object.keys(sizeRules).length > 0 || items ? { group: "repeated", rules: sizeRules, items } : undefined;
+      return { type: elementType, label: "repeated", nullable: false, warnings: [...warnings, ...element.warnings], rules };
     }
     case "record": {
       const keyUnwrapped = unwrap(def.keyType, ctx);
@@ -401,11 +564,16 @@ function resolveConcreteTypeInner(
       const valueResolved = resolveConcreteType(valueUnwrapped, currentMessage, ctx, `${path}{value}`, namePreference, false);
       const valueType = wrapCollectionIfNeeded(valueResolved, currentMessage, namePreference);
 
+      const rules: IRRuleSet | undefined =
+        keyResolved.rules || valueResolved.rules
+          ? { group: "map", rules: {}, keys: keyResolved.rules, values: valueResolved.rules }
+          : undefined;
       return {
         type: { kind: "map", key: keyResolved.type.name, value: valueType },
         label: "singular",
         nullable: false,
         warnings: [...warnings, ...keyResolved.warnings, ...valueResolved.warnings],
+        rules,
       };
     }
     case "object": {
@@ -470,26 +638,26 @@ function resolveConcreteTypeInner(
         { kind: "wkt", fullName: "google.protobuf.Timestamp" },
         { optional, nullable, allowNullableWrapper, path, warnings, ctx },
       );
-    case "string":
-      return finalize(
-        { kind: "scalar", name: meta.proto ?? "string" },
-        { optional, nullable, allowNullableWrapper, path, warnings, ctx },
-      );
+    case "string": {
+      const scalar = meta.proto ?? "string";
+      const rules = meta.validate === false ? undefined : collectRules(def, scalar);
+      return finalize({ kind: "scalar", name: scalar }, { optional, nullable, allowNullableWrapper, path, warnings, ctx, rules });
+    }
     case "boolean":
       return finalize(
         { kind: "scalar", name: meta.proto ?? "bool" },
         { optional, nullable, allowNullableWrapper, path, warnings, ctx },
       );
-    case "number":
-      return finalize(
-        { kind: "scalar", name: resolveNumberScalar(def, meta, path, warnings) },
-        { optional, nullable, allowNullableWrapper, path, warnings, ctx },
-      );
-    case "bigint":
-      return finalize(
-        { kind: "scalar", name: resolveBigintScalar(def, meta) },
-        { optional, nullable, allowNullableWrapper, path, warnings, ctx },
-      );
+    case "number": {
+      const scalar = resolveNumberScalar(def, meta, path, warnings);
+      const rules = meta.validate === false ? undefined : collectRules(def, scalar);
+      return finalize({ kind: "scalar", name: scalar }, { optional, nullable, allowNullableWrapper, path, warnings, ctx, rules });
+    }
+    case "bigint": {
+      const scalar = resolveBigintScalar(def, meta);
+      const rules = meta.validate === false ? undefined : collectRules(def, scalar);
+      return finalize({ kind: "scalar", name: scalar }, { optional, nullable, allowNullableWrapper, path, warnings, ctx, rules });
+    }
     case "custom":
       throw new UnsupportedTypeError(
         path,
@@ -551,6 +719,7 @@ function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMes
     label: resolved.label,
     pinned: unwrapped.meta.field,
     nullable: resolved.nullable,
+    rules: resolved.rules,
     warnings: resolved.warnings,
   } satisfies IRField);
 }

@@ -268,6 +268,18 @@ describe("typeKey", () => {
   it("renders maps recursively", () => {
     expect(typeKey({ kind: "map", key: "string", value: { kind: "scalar", name: "int32" } })).toBe("map<string,int32>");
   });
+  it("ignores IRField.rules — adding/removing a protovalidate rule is never a breaking type change", () => {
+    const lock = emptyLock();
+    const bare = msg("a.A", [field("name")]);
+    syncMessage(bare, lock, { allowBreaking: false });
+    expect(bare.fields[0]!.number).toBe(1);
+
+    const withRules = msg("a.A", [
+      { ...field("name"), rules: { group: "string", rules: { min_len: 1, max_len: 100 } } },
+    ]);
+    expect(() => syncMessage(withRules, lock, { allowBreaking: false })).not.toThrow();
+    expect(withRules.fields[0]!.number).toBe(1); // same field, same number — not treated as delete+add
+  });
 });
 
 describe("renameField", () => {

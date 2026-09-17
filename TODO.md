@@ -22,9 +22,12 @@ yet implemented anywhere in the tree.
         `main` without gating the merge); `buf lint`/`buf build` still also run in the CLI suite
 - [x] **Phase 4 — services**: `zodem.service()` → `service`/`rpc` emission, including
       `stream: "server" | "client" | "bidi"`
-- [ ] **Phase 5 — validation**: emit `buf.validate` (protovalidate) annotations from Zod checks
-      (`min`, `max`, `email`, `uuid`, `regex`, …) so non-TS backends get the same rules — not
-      started; zero references to protovalidate anywhere in the codebase
+- [x] **Phase 5 — validation**: emit `buf.validate` (protovalidate) annotations from Zod checks
+      (`min`, `max`, `email`, `uuid`, `regex`, …), opt-in via `validate: true` in
+      `zodem.config.ts` (default off — existing output stays byte-identical), per-field opt-out
+      via `.meta({ validate: false })`. Rules are always collected into the IR regardless of the
+      flag, never touch the lockfile's type key, so adding/removing a check is never a breaking
+      change. The full-stack example vendors `buf/validate/validate.proto` and turns it on.
 - [x] **Phase 6 — runtime**: `@zodem/codec` (Zod value ↔ protobuf-es object), Connect-ES
       server/client wiring — demonstrated end-to-end in `examples/fullstack/`
 
@@ -40,7 +43,8 @@ yet implemented anywhere in the tree.
       version segment (`v1`, `v2beta1`, …) stripped for the file base, e.g.
       `acme.user.v1` → `acme/user/v1/user.proto`
 - [x] Codec design — shipped as a **runtime**, IR-driven codec, not generated code
-- [ ] Whether to move protovalidate emission earlier than Phase 5 — still open, unstarted
+- [x] Whether to move protovalidate emission earlier than Phase 5 — resolved by shipping it now,
+      as part of closing out the remaining TODO items rather than waiting
 
 ## Not yet built
 

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -34,6 +34,41 @@ export default {
   lockfile: "zodem.lock.json",
 };
 `;
+
+const CONFIG_VALIDATE = `
+export default {
+  entry: ["schema.ts"],
+  outDir: "proto",
+  lockfile: "zodem.lock.json",
+  validate: true,
+};
+`;
+
+const SCHEMA_VALIDATE = `
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+
+export const User = zodem.message("acme.user.v1.User", {
+  id: z.string().uuid(),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(150).meta({ proto: "int32" }),
+});
+`;
+
+// The vendored buf/validate/validate.proto lives once in the fullstack
+// example (examples/fullstack/shared/proto/buf/validate/validate.proto) —
+// reused here so buf build can resolve the (buf.validate.field) extension
+// offline, the same way the example does.
+const vendoredValidateProto = join(
+  workspaceRoot,
+  "examples",
+  "fullstack",
+  "shared",
+  "proto",
+  "buf",
+  "validate",
+  "validate.proto",
+);
 
 const SCHEMA_V1 = `
 import { z } from "zod";
@@ -191,6 +226,32 @@ describe("zodem generate: end-to-end", () => {
     writeFileSync(
       join(root, "proto", "buf.yaml"),
       "version: v2\nmodules:\n  - path: .\nlint:\n  use:\n    - STANDARD\n",
+      "utf8",
+    );
+
+    execFileSync(bufBin, ["lint"], { cwd: join(root, "proto"), stdio: "pipe" });
+    execFileSync(bufBin, ["build"], { cwd: join(root, "proto"), stdio: "pipe" });
+  });
+
+  it("validate: true emits buf.validate field options that pass a real buf lint and buf build", () => {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "zodem.config.ts"), CONFIG_VALIDATE, "utf8");
+    writeFileSync(join(root, "schema.ts"), SCHEMA_VALIDATE, "utf8");
+
+    const result = runCli(["generate"], root);
+    expect(result.status).toBe(0);
+
+    const proto = readFileSync(protoPath(), "utf8");
+    expect(proto).toContain('import "buf/validate/validate.proto";');
+    expect(proto).toContain("(buf.validate.field).string = {uuid: true}");
+    expect(proto).toContain("(buf.validate.field).string = {email: true}");
+    expect(proto).toContain("(buf.validate.field).int32 = {gte: 0, lte: 150}");
+
+    mkdirSync(join(root, "proto", "buf", "validate"), { recursive: true });
+    copyFileSync(vendoredValidateProto, join(root, "proto", "buf", "validate", "validate.proto"));
+    writeFileSync(
+      join(root, "proto", "buf.yaml"),
+      "version: v2\nmodules:\n  - path: .\n    lint:\n      use:\n        - STANDARD\n      ignore:\n        - buf/validate\n    breaking:\n      use:\n        - FILE\n      ignore:\n        - buf/validate\n",
       "utf8",
     );
 

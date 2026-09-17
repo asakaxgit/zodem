@@ -1,4 +1,4 @@
-import type { IREnum, IRField, IRMessage, IRReserved, IRService, IRType, WellKnownTypeName } from "@zodem/core";
+import type { IREnum, IRField, IRMessage, IRReserved, IRRuleSet, IRRuleValue, IRService, IRType, WellKnownTypeName } from "@zodem/core";
 import { upperSnake } from "@zodem/core";
 
 export interface EmitFileInput {
@@ -6,6 +6,8 @@ export interface EmitFileInput {
   messages: IRMessage[];
   services: IRService[];
   imports: Iterable<string>;
+  /** Render protovalidate (buf.validate) field options from IRField.rules. Default false — existing output stays byte-identical unless opted in. */
+  validate?: boolean;
 }
 
 function shortName(fullName: string): string {
@@ -40,13 +42,40 @@ function emitReserved(reserved: IRReserved[], indent: string): string[] {
   return lines;
 }
 
-function emitFieldLine(field: IRField, packageName: string, indent: string): string {
-  const label = field.oneof ? "" : field.label === "repeated" ? "repeated " : field.label === "optional" ? "optional " : "";
-  const typeName = typeNameFor(field.type, packageName);
-  return `${indent}${label}${typeName} ${field.name} = ${field.number};`;
+function renderRuleValue(value: IRRuleValue): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "bigint") return value.toString();
+  return String(value);
 }
 
-function emitMessage(msg: IRMessage, packageName: string, indentLevel: number): string[] {
+// Nested position (repeated.items / map.keys / map.values): those fields are
+// the generic FieldConstraints message, so the group name must be spelled
+// out as a key — unlike the top-level option, which already selects the
+// group via the extension path itself.
+function renderRuleSetWrapped(rules: IRRuleSet): string {
+  return `${rules.group}: {${renderRuleSetBody(rules)}}`;
+}
+
+function renderRuleSetBody(rules: IRRuleSet): string {
+  const parts = Object.entries(rules.rules).map(([key, value]) => `${key}: ${renderRuleValue(value)}`);
+  if (rules.items) parts.push(`items: {${renderRuleSetWrapped(rules.items)}}`);
+  if (rules.keys) parts.push(`keys: {${renderRuleSetWrapped(rules.keys)}}`);
+  if (rules.values) parts.push(`values: {${renderRuleSetWrapped(rules.values)}}`);
+  return parts.join(", ");
+}
+
+function emitFieldLine(field: IRField, packageName: string, indent: string, validate: boolean): string {
+  const label = field.oneof ? "" : field.label === "repeated" ? "repeated " : field.label === "optional" ? "optional " : "";
+  const typeName = typeNameFor(field.type, packageName);
+  const options: string[] = [];
+  if (validate && field.rules) {
+    options.push(`(buf.validate.field).${field.rules.group} = {${renderRuleSetBody(field.rules)}}`);
+  }
+  const optionsSuffix = options.length > 0 ? ` [${options.join(", ")}]` : "";
+  return `${indent}${label}${typeName} ${field.name} = ${field.number}${optionsSuffix};`;
+}
+
+function emitMessage(msg: IRMessage, packageName: string, indentLevel: number, validate: boolean): string[] {
   const indent = "  ".repeat(indentLevel);
   const inner = "  ".repeat(indentLevel + 1);
   const lines: string[] = [`${indent}message ${shortName(msg.fullName)} {`];
@@ -57,7 +86,7 @@ function emitMessage(msg: IRMessage, packageName: string, indentLevel: number): 
     .filter((f) => !f.oneof)
     .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
   for (const field of regularFields) {
-    lines.push(emitFieldLine(field, packageName, inner));
+    lines.push(emitFieldLine(field, packageName, inner, validate));
   }
 
   const oneofNames = [...new Set(msg.fields.filter((f) => f.oneof).map((f) => f.oneof as string))].sort();
@@ -67,14 +96,14 @@ function emitMessage(msg: IRMessage, packageName: string, indentLevel: number): 
       .filter((f) => f.oneof === oneofName)
       .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
     for (const field of members) {
-      lines.push(emitFieldLine(field, packageName, `${inner}  `));
+      lines.push(emitFieldLine(field, packageName, `${inner}  `, validate));
     }
     lines.push(`${inner}}`);
   }
 
   const nestedMessages = [...msg.nested.messages].sort((a, b) => a.fullName.localeCompare(b.fullName));
   for (const nested of nestedMessages) {
-    lines.push(...emitMessage(nested, packageName, indentLevel + 1));
+    lines.push(...emitMessage(nested, packageName, indentLevel + 1, validate));
   }
   const nestedEnums = [...msg.nested.enums].sort((a, b) => a.fullName.localeCompare(b.fullName));
   for (const en of nestedEnums) {
@@ -125,10 +154,11 @@ export function emitProto(input: EmitFileInput): string {
     for (const imp of imports) lines.push(`import "${imp}";`);
   }
 
+  const validate = input.validate ?? false;
   const messages = [...input.messages].sort((a, b) => a.fullName.localeCompare(b.fullName));
   for (const msg of messages) {
     lines.push("");
-    lines.push(...emitMessage(msg, input.package, 0));
+    lines.push(...emitMessage(msg, input.package, 0, validate));
   }
 
   const services = [...input.services].sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -203,18 +233,26 @@ function collectMessageImports(
   for (const nested of msg.nested.messages) collectMessageImports(nested, selfPackage, typeOwnerPackage, out);
 }
 
+function messageHasRules(msg: IRMessage): boolean {
+  return msg.fields.some((f) => f.rules) || msg.nested.messages.some(messageHasRules);
+}
+
 /**
  * Every import a package's generated file needs: WKT imports (Timestamp,
  * wrapper types, ...) plus one `import` per *other* package referenced by
  * any message/enum type anywhere in this package's messages or services —
  * `typeOwnerPackage` maps every message/enum full name (including nested
- * ones) to the package of its top-level ancestor.
+ * ones) to the package of its top-level ancestor. With `opts.validate` and
+ * at least one field carrying rules, also imports the protovalidate schema
+ * — `ctx.addImport` in the walker can't do this itself, since the CLI (see
+ * generate.ts) computes imports here instead of reading the walker's.
  */
 export function computeFileImports(
   messages: readonly IRMessage[],
   services: readonly IRService[],
   selfPackage: string,
   typeOwnerPackage: ReadonlyMap<string, string>,
+  opts?: { validate?: boolean },
 ): string[] {
   const out = new Set<string>();
   for (const msg of messages) collectMessageImports(msg, selfPackage, typeOwnerPackage, out);
@@ -226,5 +264,6 @@ export function computeFileImports(
       }
     }
   }
+  if (opts?.validate && messages.some(messageHasRules)) out.add("buf/validate/validate.proto");
   return [...out].sort();
 }

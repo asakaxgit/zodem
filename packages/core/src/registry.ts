@@ -15,6 +15,8 @@ export interface ZodemFieldMeta {
   proto?: ScalarName;
   /** Override the generated nested message/enum name. */
   name?: string;
+  /** Set to `false` to suppress protovalidate rule emission for this field, overriding the emitter's `validate` config flag. */
+  validate?: false;
 }
 
 export type ZodemMeta =
