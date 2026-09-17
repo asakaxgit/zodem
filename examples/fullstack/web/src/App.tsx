@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createClient, ConnectError } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { z } from "zod";
+import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
 const transport = createConnectTransport({ baseUrl: "/" });

@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError, type ConnectRouter } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { z } from "zod";
+import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
 // In-memory store. Values are Zod-shaped (the validated domain type), not

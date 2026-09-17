@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+import type { z } from "zod";
 import { codecs } from "../src/codecs.js";
 import { CreateUserRequest as ZodCreateUserRequest } from "../src/schemas/user.js";
 import { CreateUserRequestSchema } from "../src/gen/acme/user/v1/user_pb.js";
 
 describe("shared codecs: real wire round-trip", () => {
   it("Zod value -> codec -> protobuf-es create() -> real binary wire bytes -> back", () => {
-    const zodValue: import("zod").infer<typeof ZodCreateUserRequest> = {
+    const zodValue: z.infer<typeof ZodCreateUserRequest> = {
       email: "amy@example.com",
       displayName: "Amy",
       age: 34,

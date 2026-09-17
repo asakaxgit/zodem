@@ -130,8 +130,7 @@ describe("codec: z.lazy() recursion", () => {
       name: string;
       children: CategoryShape[];
     }
-    let Category!: z.ZodType<CategoryShape>;
-    Category = zodem.message("acme.cat.v1.Category", {
+    const Category: z.ZodType<CategoryShape> = zodem.message("acme.cat.v1.Category", {
       name: z.string(),
       children: z.array(z.lazy(() => Category)),
     }) as unknown as z.ZodType<CategoryShape>;

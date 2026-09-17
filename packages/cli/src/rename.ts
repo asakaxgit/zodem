@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
-import { renameField as coreRenameField, renameMessage as coreRenameMessage, renameEnumValue as coreRenameEnumValue } from "@zodem/core";
+import {
+  renameField as coreRenameField,
+  renameMessage as coreRenameMessage,
+  renameEnumValue as coreRenameEnumValue,
+  type LockFile,
+} from "@zodem/core";
 import { loadLock, writeLock } from "@zodem/core/node";
 import { loadConfig } from "./config.js";
 
@@ -8,7 +13,7 @@ export interface RenameResult {
   summary: string;
 }
 
-async function withLock(cwd: string, mutate: (lock: import("@zodem/core").LockFile) => string): Promise<RenameResult> {
+async function withLock(cwd: string, mutate: (lock: LockFile) => string): Promise<RenameResult> {
   const { config, root } = await loadConfig(cwd);
   const lockPath = resolve(root, config.lockfile);
   const lock = loadLock(lockPath);
