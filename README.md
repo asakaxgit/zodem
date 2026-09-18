@@ -1,5 +1,7 @@
 # Zod'em All! 🧢
 
+**English** | [日本語](README.ja.md)
+
 **Write Zod once. Use it everywhere — backend, frontend, and AI.**
 
 [![CI](https://github.com/asakaxgit/zodem/actions/workflows/ci.yml/badge.svg)](https://github.com/asakaxgit/zodem/actions/workflows/ci.yml)
