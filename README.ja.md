@@ -2,7 +2,7 @@
 
 [English](README.md) | **日本語**
 
-**Zodを一度書けば、どこでも使える — バックエンド、フロントエンド、そしてAI。**
+**Zodひとつで、どこでも使える — バックエンド、フロントエンド、そしてAIまで。**
 
 [![CI](https://github.com/asakaxgit/zodem/actions/workflows/ci.yml/badge.svg)](https://github.com/asakaxgit/zodem/actions/workflows/ci.yml)
 [![Zod](https://img.shields.io/badge/zod-4.6.5-3E67B1)](https://zod.dev)
