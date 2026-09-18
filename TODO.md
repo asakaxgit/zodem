@@ -6,9 +6,10 @@ yet implemented anywhere in the tree.
 
 ## Priority
 
-- [ ] **Japanese documentation** — translate `README.md` into Japanese (`README.ja.md`),
-      linked from the top of the English README with a language switcher, the way
-      multi-language OSS READMEs usually do. Ahead of everything else below.
+- [x] **Japanese documentation** — `README.ja.md`, full translation, linked from the top of
+      both READMEs via a language switcher. Code blocks/CLI output/error text kept verbatim in
+      English (literal tool output must stay accurate); only prose, headings, and table
+      descriptions are translated. Internal anchors retargeted to the Japanese headings.
 
 ## Roadmap phases
 
