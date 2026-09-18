@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -44,3 +46,15 @@ jobs:
       # weren't regenerated and committed — this is the guarantee the whole
       # project sells, so CI is where it's actually enforced.
       - run: pnpm run example:generate:check
+
+      - run: pnpm run example:buf:lint
+
+      # Optional extra check (TODO.md Phase 3): reports wire-breaking drift
+      # against main without blocking the merge. Only meaningful on a PR —
+      # on a push to main, origin/main is the commit itself.
+      - name: buf breaking (optional)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch origin main
+          pnpm run example:buf:breaking

@@ -293,3 +293,67 @@ describe("walker: services", () => {
     expect(() => walkRegistry()).toThrow(/RPC_RESPONSE_STANDARD_NAME/);
   });
 });
+
+describe("walker: protovalidate rule collection", () => {
+  it("collects string rules, both the .email()-as-check and z.email()-as-format spellings", () => {
+    zodem.message("acme.a.v1.A", {
+      id: z.string().uuid(),
+      email: z.string().email(),
+      emailShort: z.email(),
+      name: z.string().min(1).max(100),
+      code: z.string().length(2),
+      pattern: z.string().regex(/^[a-z]+$/),
+      pfx: z.string().startsWith("x-"),
+    });
+    const byName = Object.fromEntries(walkRegistry().messages[0]!.fields.map((f) => [f.jsonName, f]));
+    expect(byName.id?.rules).toEqual({ group: "string", rules: { uuid: true } });
+    expect(byName.email?.rules).toEqual({ group: "string", rules: { email: true } });
+    expect(byName.emailShort?.rules).toEqual({ group: "string", rules: { email: true } });
+    expect(byName.name?.rules).toEqual({ group: "string", rules: { min_len: 1, max_len: 100 } });
+    expect(byName.code?.rules).toEqual({ group: "string", rules: { len: 2 } });
+    expect(byName.pattern?.rules).toEqual({ group: "string", rules: { pattern: "^[a-z]+$" } });
+    expect(byName.pfx?.rules).toEqual({ group: "string", rules: { prefix: "x-" } });
+  });
+
+  it("collects numeric bounds preserving gt/gte and lt/lte distinctly", () => {
+    zodem.message("acme.a.v1.A", {
+      age: z.number().int().min(0).max(150).meta({ proto: "int32" }),
+      score: z.number().gt(0).lt(1),
+      big: z.bigint().min(0n),
+    });
+    const byName = Object.fromEntries(walkRegistry().messages[0]!.fields.map((f) => [f.jsonName, f]));
+    expect(byName.age?.rules).toEqual({ group: "int32", rules: { gte: 0, lte: 150 } });
+    expect(byName.score?.rules).toEqual({ group: "double", rules: { gt: 0, lt: 1 } });
+    expect(byName.big?.rules).toEqual({ group: "int64", rules: { gte: 0n } });
+  });
+
+  it("collects array size rules and folds the element's own rules into `items`", () => {
+    zodem.message("acme.a.v1.A", { tags: z.array(z.string().min(1)).min(1).max(5) });
+    const field = walkRegistry().messages[0]!.fields[0]!;
+    expect(field.rules).toEqual({
+      group: "repeated",
+      rules: { min_items: 1, max_items: 5 },
+      items: { group: "string", rules: { min_len: 1 } },
+    });
+  });
+
+  it("has no rules for a field with no checks", () => {
+    zodem.message("acme.a.v1.A", { plain: z.string() });
+    const field = walkRegistry().messages[0]!.fields[0]!;
+    expect(field.rules).toBeUndefined();
+  });
+
+  it("`.meta({ validate: false })` suppresses rule collection for that field", () => {
+    zodem.message("acme.a.v1.A", { email: z.string().email().meta({ validate: false }) });
+    const field = walkRegistry().messages[0]!.fields[0]!;
+    expect(field.rules).toBeUndefined();
+  });
+
+  it("still applies the group of the underlying scalar when wrapped by .nullable()", () => {
+    zodem.message("acme.a.v1.A", { email: z.string().email().nullable() });
+    const field = walkRegistry().messages[0]!.fields[0]!;
+    expect(field.type).toEqual({ kind: "wkt", fullName: "google.protobuf.StringValue" });
+    expect(field.rules).toEqual({ group: "string", rules: { email: true } });
+  });
+
+});

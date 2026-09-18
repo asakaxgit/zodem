@@ -223,6 +223,7 @@ Usage:
 | `.meta({ proto })` | override the inferred scalar | e.g. `"sint32"`, `"fixed64"` |
 | `.meta({ field })` | pin the wire field number | escape hatch for importing an existing `.proto` |
 | `.meta({ name })` | override a nested message/enum name | |
+| `.meta({ validate: false })` | suppress protovalidate rules for this field | overrides the `validate` config flag, see [Validation](#validation) |
 
 `.nullable()` wraps every scalar that has a well-known wrapper type (`string`, `bool`,
 `int32`/`int64`, `uint32`/`uint64`, `float`/`double`, `bytes`) — `sint*`/`fixed*` have none and
@@ -284,6 +285,63 @@ export const Category = zodem.message("acme.cat.v1.Category", {
   children: z.array(z.lazy(() => Category)),
 });
 ```
+
+## Validation
+
+Zod checks (`.min()`, `.email()`, `.uuid()`, `.regex()`, …) are always read off the schema into
+the IR — turn on `validate` in `zodem.config.ts` to also emit them as
+[protovalidate](https://protovalidate.com/) `buf.validate` field options, so a non-TS backend
+gets the same rules the Zod schema enforces, not just the wire shape:
+
+```ts
+// zodem.config.ts
+export default {
+  entry: ["src/schemas/**/*.ts"],
+  outDir: "proto",
+  lockfile: "zodem.lock.json",
+  validate: true,
+};
+```
+
+```ts
+export const User = zodem.message("acme.user.v1.User", {
+  id: z.string().uuid(),
+  email: z.string().email(),
+  displayName: z.string().min(1).max(100),
+  age: z.number().int().min(0).max(150).meta({ proto: "int32" }),
+});
+```
+
+```proto
+message User {
+  string id = 1 [(buf.validate.field).string = {uuid: true}];
+  string email = 2 [(buf.validate.field).string = {email: true}];
+  string display_name = 3 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  int32 age = 4 [(buf.validate.field).int32 = {gte: 0, lte: 150}];
+}
+```
+
+`validate` is **off by default** — existing generated output is byte-identical unless you opt
+in — and it's per-field, not per-project: `.meta({ validate: false })` suppresses rules for one
+field even with the config flag on.
+
+| Zod check | protovalidate rule |
+|---|---|
+| `.min(n)` / `.max(n)` / `.length(n)` on a string | `string.min_len` / `max_len` / `len` |
+| `.email()` / `.uuid()` / `.guid()` / `.url()` / `.ipv4()` / `.ipv6()` | `string.email` / `uuid` / `uuid` / `uri` / `ipv4` / `ipv6` |
+| `.regex(re)` | `string.pattern` (the bare pattern text — flags aren't representable) |
+| `.startsWith()` / `.endsWith()` / `.includes()` | `string.prefix` / `suffix` / `contains` |
+| `.gt()` / `.gte()` / `.lt()` / `.lte()` on a number/bigint | the matching numeric rule group's `gt`/`gte`/`lt`/`lte` |
+| `.min(n)` / `.max(n)` on an array | `repeated.min_items` / `max_items`, plus the element's own rules nested under `items` |
+
+Anything not in this table (`.datetime()`, `.cuid()`, custom `.refine()`, …) is silently skipped
+rather than guessed — the wire shape is unaffected either way, since rules never influence field
+numbering or type resolution.
+
+`buf.validate.field` comes from a separate schema — `buf/validate/validate.proto` — that your
+`.proto` output now imports. The [full-stack example](#the-full-stack-example) vendors it
+(`examples/fullstack/shared/proto/buf/validate/validate.proto`) so `buf lint`/`buf build` and CI
+never need the BSR; `buf export buf.build/bufbuild/protovalidate` fetches your own copy.
 
 ## Runtime codec
 
@@ -354,11 +412,14 @@ pnpm example:dev        # run the server and the web app together
 ```yaml
 # .github/workflows/ci.yml
 - run: pnpm run example:generate:check
+- run: pnpm run example:buf:lint
+- run: pnpm run example:buf:breaking  # optional: reports wire-breaking drift, doesn't block
 ```
 
 > Fails the build if the schemas changed but `proto/` or the lockfile weren't regenerated and
 > committed — this is the guarantee the whole project sells, so CI is where it's actually
-> enforced.
+> enforced. `buf breaking` runs on every PR against `main` as a non-blocking check — it reports
+> wire compatibility drift without gating the merge.
 
 ## Packages
 
@@ -377,8 +438,8 @@ pnpm example:dev        # run the server and the web app together
 | `zodem rename` for fields, messages, enum values | ✅ shipped |
 | Maps, `z.lazy()` recursion, collection wrapper messages, multi-package output | ✅ shipped |
 | `zodem.service()` → `service`/`rpc`, streaming, Connect codec | ✅ shipped |
-| Removed-type tombstoning, `buf breaking` as an optional CI check | 🟡 partial |
-| Emit `buf.validate` (protovalidate) annotations from Zod checks (`min`, `email`, `regex`, …) | ⬜ planned |
+| Removed-type tombstoning, `buf breaking` as an optional CI check | ✅ shipped |
+| Emit `buf.validate` (protovalidate) annotations from Zod checks (`min`, `email`, `regex`, …) | ✅ shipped |
 | **JSON Schema / LLM tool-call & structured-output emission from the same IR** | ⬜ planned |
 
 That last row is the "AI" in the tagline above: the walker already turns a Zod schema into a

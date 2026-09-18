@@ -1,9 +1,13 @@
 version: v2
 modules:
   - path: .
-lint:
-  use:
-    - STANDARD
-breaking:
-  use:
-    - FILE
+    lint:
+      use:
+        - STANDARD
+      ignore:
+        - buf/validate
+    breaking:
+      use:
+        - FILE
+      ignore:
+        - buf/validate

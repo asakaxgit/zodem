@@ -38,6 +38,20 @@ export type IRType =
 
 export type IRLabel = "singular" | "optional" | "repeated";
 
+export type IRRuleValue = string | number | bigint | boolean;
+
+export interface IRRuleSet {
+  /** protovalidate rule group matching the wire type: "string" | "int32" | … | "repeated" | "map" */
+  group: string;
+  /** rule name -> literal, e.g. { min_len: 1, email: true }; insertion order is emission order */
+  rules: Record<string, IRRuleValue>;
+  /** repeated element rules */
+  items?: IRRuleSet;
+  /** map key/value rules */
+  keys?: IRRuleSet;
+  values?: IRRuleSet;
+}
+
 export interface IRField {
   /** proto field name (snake_case) */
   name: string;
@@ -52,6 +66,14 @@ export interface IRField {
   pinned?: number;
   /** true if the Zod field used `.nullable()` — decode must emit `null`, not omit the key */
   nullable?: boolean;
+  /**
+   * protovalidate rules read off Zod checks (.min(), .email(), …). Always
+   * collected regardless of whether any emitter renders them — a future
+   * JSON Schema emitter can reuse the same data. Never contributes to the
+   * lockfile's typeKey(), so adding/removing a check is never a "breaking
+   * type change".
+   */
+  rules?: IRRuleSet;
   warnings: string[];
 }
 

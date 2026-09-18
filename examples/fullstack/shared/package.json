@@ -9,6 +9,8 @@
     "generate": "zodem generate",
     "generate:check": "zodem generate --check",
     "buf:generate": "buf generate",
+    "buf:lint": "buf lint proto",
+    "buf:breaking": "buf breaking proto --against '../../../.git#ref=origin/main,subdir=examples/fullstack/shared/proto'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

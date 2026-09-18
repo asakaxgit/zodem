@@ -14,16 +14,20 @@ yet implemented anywhere in the tree.
 - [x] **Phase 2 — structure**: maps (`z.record` → `map<K,V>`), full oneof support, `z.lazy()`
       recursion, remaining well-known types, collection wrapper messages for nested
       repeated/map values, multi-package output with cross-package imports
-- [ ] **Phase 3 — safety**
+- [x] **Phase 3 — safety**
   - [x] removed messages/enums are tombstoned (`removed: true`, warned on generate, field/value
         numbers kept claimed) rather than dropped
-  - [ ] `buf breaking` as an optional extra CI check — not wired in; `buf lint`/`buf build` run
-        today only inside the CLI test suite, not as a top-level CI or `zodem` step
+  - [x] `buf breaking` as an optional extra CI check — `example:buf:lint` runs blocking, and
+        `example:buf:breaking` runs on every PR (`continue-on-error: true`, reports drift against
+        `main` without gating the merge); `buf lint`/`buf build` still also run in the CLI suite
 - [x] **Phase 4 — services**: `zodem.service()` → `service`/`rpc` emission, including
       `stream: "server" | "client" | "bidi"`
-- [ ] **Phase 5 — validation**: emit `buf.validate` (protovalidate) annotations from Zod checks
-      (`min`, `max`, `email`, `uuid`, `regex`, …) so non-TS backends get the same rules — not
-      started; zero references to protovalidate anywhere in the codebase
+- [x] **Phase 5 — validation**: emit `buf.validate` (protovalidate) annotations from Zod checks
+      (`min`, `max`, `email`, `uuid`, `regex`, …), opt-in via `validate: true` in
+      `zodem.config.ts` (default off — existing output stays byte-identical), per-field opt-out
+      via `.meta({ validate: false })`. Rules are always collected into the IR regardless of the
+      flag, never touch the lockfile's type key, so adding/removing a check is never a breaking
+      change. The full-stack example vendors `buf/validate/validate.proto` and turns it on.
 - [x] **Phase 6 — runtime**: `@zodem/codec` (Zod value ↔ protobuf-es object), Connect-ES
       server/client wiring — demonstrated end-to-end in `examples/fullstack/`
 
@@ -39,14 +43,14 @@ yet implemented anywhere in the tree.
       version segment (`v1`, `v2beta1`, …) stripped for the file base, e.g.
       `acme.user.v1` → `acme/user/v1/user.proto`
 - [x] Codec design — shipped as a **runtime**, IR-driven codec, not generated code
-- [ ] Whether to move protovalidate emission earlier than Phase 5 — still open, unstarted
+- [x] Whether to move protovalidate emission earlier than Phase 5 — resolved by shipping it now,
+      as part of closing out the remaining TODO items rather than waiting
 
 ## Not yet built
 
 - [ ] JSON Schema / LLM tool-call & structured-output emission from the same IR — this is the
       "AI" destination in the README tagline; no code exists for it yet. Would be a new
       emitter alongside `@zodem/proto` and `@zodem/codec`, consuming the same walker output.
-- [ ] `buf breaking` wired into CI as a real gate (see Phase 3 above)
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI

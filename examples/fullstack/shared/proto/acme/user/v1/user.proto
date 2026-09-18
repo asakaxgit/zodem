@@ -3,18 +3,19 @@ syntax = "proto3";
 
 package acme.user.v1;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
 message Address {
-  string city = 1;
-  string country = 2;
+  string city = 1 [(buf.validate.field).string = {min_len: 1}];
+  string country = 2 [(buf.validate.field).string = {len: 2}];
 }
 
 message CreateUserRequest {
-  string email = 1;
-  string display_name = 2;
-  int32 age = 3;
+  string email = 1 [(buf.validate.field).string = {email: true}];
+  string display_name = 2 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  int32 age = 3 [(buf.validate.field).int32 = {gte: 0, lte: 150}];
   User.Role role = 4;
   google.protobuf.StringValue nickname = 5;
   Address address = 6;
@@ -25,7 +26,7 @@ message CreateUserResponse {
 }
 
 message GetUserRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).string = {uuid: true}];
 }
 
 message GetUserResponse {
@@ -33,10 +34,10 @@ message GetUserResponse {
 }
 
 message User {
-  string id = 1;
-  string email = 2;
-  string display_name = 3;
-  int32 age = 4;
+  string id = 1 [(buf.validate.field).string = {uuid: true}];
+  string email = 2 [(buf.validate.field).string = {email: true}];
+  string display_name = 3 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  int32 age = 4 [(buf.validate.field).int32 = {gte: 0, lte: 150}];
   User.Role role = 5;
   google.protobuf.StringValue nickname = 6;
   Address address = 7;

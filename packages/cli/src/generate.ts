@@ -106,6 +106,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
 
   warnings.push(...markRemovedEntries(lock, presentMessages, presentEnums));
 
+  const validate = config.validate === true;
   const groups = groupByPackage(walked.messages, walked.services);
   const files: GeneratedFile[] = [];
   for (const [packageName, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -113,7 +114,8 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
       package: packageName,
       messages: group.messages,
       services: group.services,
-      imports: computeFileImports(group.messages, group.services, packageName, typeOwnerPackage),
+      imports: computeFileImports(group.messages, group.services, packageName, typeOwnerPackage, { validate }),
+      validate,
     });
     files.push({ path: resolve(root, config.outDir, outputPathFor(packageName)), content: protoText });
   }

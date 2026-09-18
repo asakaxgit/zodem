@@ -9,7 +9,7 @@ beforeEach(() => {
   resetRegistry();
 });
 
-function generate(): string {
+function generate(opts: { validate?: boolean } = {}): string {
   const walked = walkRegistry();
   const lock = loadLock("/nonexistent/zodem.lock.json"); // always empty — fine, tests don't touch fs
   const syncAll = (m: IRMessage): void => {
@@ -18,7 +18,13 @@ function generate(): string {
     for (const nested of m.nested.messages) syncAll(nested);
   };
   for (const m of walked.messages) syncAll(m);
-  return emitProto({ package: "acme.user.v1", messages: walked.messages, services: walked.services, imports: walked.imports });
+  return emitProto({
+    package: "acme.user.v1",
+    messages: walked.messages,
+    services: walked.services,
+    imports: walked.imports,
+    validate: opts.validate,
+  });
 }
 
 describe("emitProto: the handoff §4 example", () => {
@@ -51,6 +57,73 @@ describe("emitProto: nullable wrapper", () => {
     const text = generate();
     expect(text).toContain('import "google/protobuf/wrappers.proto";');
     expect(text).toContain("google.protobuf.StringValue bio = 1;");
+  });
+});
+
+describe("emitProto: protovalidate field options", () => {
+  it("renders nothing when validate is off, even though rules were collected", () => {
+    zodem.message("acme.user.v1.A", { email: z.string().email() });
+    const text = generate();
+    expect(text).not.toContain("buf.validate");
+    expect(text).toContain("string email = 1;");
+  });
+
+  it("renders a single-rule group as `[(buf.validate.field).<group> = {...}]`", () => {
+    zodem.message("acme.user.v1.A", { email: z.string().email() });
+    const text = generate({ validate: true });
+    expect(text).toContain("string email = 1 [(buf.validate.field).string = {email: true}];");
+  });
+
+  it("renders multiple rules in the same group as one message literal", () => {
+    zodem.message("acme.user.v1.A", { name: z.string().min(1).max(100) });
+    const text = generate({ validate: true });
+    expect(text).toContain("string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 100}];");
+  });
+
+  it("renders repeated size rules plus nested `items`", () => {
+    zodem.message("acme.user.v1.A", { tags: z.array(z.string().min(1)).min(1).max(5) });
+    const text = generate({ validate: true });
+    expect(text).toContain(
+      "repeated string tags = 1 [(buf.validate.field).repeated = {min_items: 1, max_items: 5, items: {string: {min_len: 1}}}];",
+    );
+  });
+
+  it("keeps the string rule group for a nullable field, even though the wire type is a wrapper", () => {
+    zodem.message("acme.user.v1.A", { email: z.string().email().nullable() });
+    const text = generate({ validate: true });
+    expect(text).toContain("google.protobuf.StringValue email = 1 [(buf.validate.field).string = {email: true}];");
+  });
+
+  it("emits no options for a field with no rules, even with validate on", () => {
+    zodem.message("acme.user.v1.A", { plain: z.string() });
+    const text = generate({ validate: true });
+    expect(text).toContain("string plain = 1;");
+  });
+});
+
+describe("computeFileImports: protovalidate", () => {
+  it("adds the buf/validate import only when validate is on and a field has rules", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"]]);
+    const withRules = msg("acme.a.v1.A", [
+      { name: "email", jsonName: "email", type: { kind: "scalar", name: "string" }, label: "singular", warnings: [], rules: { group: "string", rules: { email: true } } },
+    ]);
+    expect(computeFileImports([withRules], [], "acme.a.v1", owner, { validate: true })).toEqual(["buf/validate/validate.proto"]);
+    expect(computeFileImports([withRules], [], "acme.a.v1", owner, { validate: false })).toEqual([]);
+    expect(computeFileImports([withRules], [], "acme.a.v1", owner)).toEqual([]);
+
+    const noRules = msg("acme.a.v1.A", [
+      { name: "email", jsonName: "email", type: { kind: "scalar", name: "string" }, label: "singular", warnings: [] },
+    ]);
+    expect(computeFileImports([noRules], [], "acme.a.v1", owner, { validate: true })).toEqual([]);
+  });
+
+  it("finds rules nested inside a nested message", () => {
+    const owner = new Map([["acme.a.v1.A", "acme.a.v1"], ["acme.a.v1.A.Inner", "acme.a.v1"]]);
+    const inner = msg("acme.a.v1.A.Inner", [
+      { name: "email", jsonName: "email", type: { kind: "scalar", name: "string" }, label: "singular", warnings: [], rules: { group: "string", rules: { email: true } } },
+    ]);
+    const a = msg("acme.a.v1.A", [{ name: "inner", jsonName: "inner", type: { kind: "message", fullName: "acme.a.v1.A.Inner" }, label: "singular", warnings: [] }], [inner]);
+    expect(computeFileImports([a], [], "acme.a.v1", owner, { validate: true })).toEqual(["buf/validate/validate.proto"]);
   });
 });
 
