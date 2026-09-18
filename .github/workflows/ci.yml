@@ -22,9 +22,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm run typecheck
+      - run: pnpm run lint
 
+      # Must run before typecheck: @zodem/core's package.json resolves its
+      # types from dist/, so packages that depend on it (proto, codec, cli)
+      # can't type-check against a workspace sibling that hasn't been built.
       - run: pnpm run build
+
+      # pnpm links workspace `bin` entries (e.g. `zodem`, resolved from
+      # packages/cli's package.json to dist/index.js) at install time. On a
+      # fresh checkout dist/ doesn't exist yet, so that first install skips
+      # the symlink — reinstalling now that build has produced dist/ creates
+      # it, which example:generate:check below depends on.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run typecheck
 
       - run: pnpm run test
 

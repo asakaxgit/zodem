@@ -9,11 +9,14 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
     "example:generate": "pnpm --filter @example/shared run generate",
     "example:generate:check": "pnpm --filter @example/shared run generate:check",
     "example:dev": "concurrently -n server,web -c blue,green \"pnpm --filter @example/server run dev\" \"pnpm --filter @example/web run dev\""
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@types/node": "^22.10.5",
     "concurrently": "10.0.5",
     "typescript": "5.9.3",

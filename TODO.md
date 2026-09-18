@@ -47,7 +47,9 @@ yet implemented anywhere in the tree.
       "AI" destination in the README tagline; no code exists for it yet. Would be a new
       emitter alongside `@zodem/proto` and `@zodem/codec`, consuming the same walker output.
 - [ ] `buf breaking` wired into CI as a real gate (see Phase 3 above)
-- [ ] A lint script / ESLint config — none exists in any package today
+- [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
+      avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
+      uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
 - [ ] A `LICENSE` file — repo currently has none
 
 ## Branding / publishing action items (handoff, for the human owner)

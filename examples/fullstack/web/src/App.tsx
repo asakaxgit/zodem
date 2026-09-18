@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createClient, ConnectError } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { z } from "zod";
+import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
 const transport = createConnectTransport({ baseUrl: "/" });
@@ -130,6 +130,7 @@ export function App() {
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the control is nested inside via `children`, just not visible to the static check
     <label style={{ display: "grid", gap: "0.25rem" }}>
       <span>{label}</span>
       {children}

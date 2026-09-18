@@ -392,6 +392,7 @@ pnpm install
 pnpm build
 pnpm test
 pnpm typecheck
+pnpm lint
 ```
 
 Tests run on [Vitest](https://vitest.dev/); the CLI suite spawns the actual built `zodem`

@@ -250,8 +250,7 @@ describe("walker: z.lazy() recursion", () => {
       name: string;
       children: CategoryShape[];
     }
-    let Category!: z.ZodType<CategoryShape>;
-    Category = zodem.message("acme.cat.v1.Category", {
+    const Category: z.ZodType<CategoryShape> = zodem.message("acme.cat.v1.Category", {
       name: z.string(),
       children: z.array(z.lazy(() => Category)),
     }) as unknown as z.ZodType<CategoryShape>;
@@ -265,7 +264,7 @@ describe("walker: z.lazy() recursion", () => {
   });
 
   it("throws a clear, actionable error for an unregistered self-referential z.lazy(), instead of stack-overflowing", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: self-referential forward declaration needs an escape hatch from the type checker
     const Self: any = z.lazy(() => z.object({ next: Self.optional() }));
     zodem.message("acme.a.v1.A", { self: Self });
     expect(() => walkRegistry()).toThrow(/self-referential z\.lazy\(\).*zodem\.message/s);
