@@ -423,6 +423,33 @@ pnpm example:dev        # run the server and the web app together
 > enforced. `buf breaking` runs on every PR against `main` as a non-blocking check — it reports
 > wire compatibility drift without gating the merge.
 
+## Comparison
+
+Every one of these solves "keep the frontend, the backend, and the wire in sync" differently.
+zodem's angle specifically is: keep writing Zod, get a real cross-language wire format and
+stable field numbers for free.
+
+| | **zodem** | **tRPC** | Schema-first protobuf (`buf generate` / `protoc-gen-es`) | **Zodios** / `zod-to-openapi` | **By-hand wiring** |
+|---|---|---|---|---|---|
+| What you author | A Zod schema | TS types/procedures (implicitly shared) | A `.proto` file | A Zod schema | A Zod schema, a `.proto`, and glue code — three separate places |
+| What's generated | `.proto` + a runtime codec, from the Zod schema | Nothing — the client imports the server's types directly | TS types/client, from the `.proto` | An OpenAPI document/client, from the Zod schema | Nothing — everything is kept in sync by memory |
+| Wire format | Protobuf (binary) | None — plain function calls, usually HTTP+JSON | Protobuf (binary) | JSON (OpenAPI) | Whatever was decided, however long ago |
+| Cross-language clients | ✅ protobuf | ❌ TS-only — client and server must share the same TS types | ✅ protobuf | ✅ via OpenAPI codegen | 🤷 however many times someone re-implemented it |
+| Field numbers survive a rename | ✅ `zodem rename` + lockfile | N/A — no wire schema | ⚠️ you track and pin numbers yourself | N/A — no field-number concept | ❌ nobody's watching |
+| Validation rules travel with the schema | ✅ same Zod checks → `buf.validate` | N/A — validation is just Zod, in-process | ⚠️ hand-write `buf.validate` separately, or skip it | ✅ same Zod checks → OpenAPI constraints | ❌ redeclared separately per side, drifts silently |
+
+None of these are wrong — they're answering different questions:
+
+- **Reach for tRPC** if it's TypeScript end-to-end in one repo and you'll never need a non-TS
+  client or a real binary wire format — it's simpler than all of the above for exactly that case.
+- **Reach for schema-first protobuf** if the `.proto` is already your contract (owned by another
+  team, or non-TS services are the primary authors) — zodem assumes the opposite direction, Zod
+  as the source of truth.
+- **Reach for Zodios/`zod-to-openapi`** if REST/JSON + OpenAPI is your wire format of choice —
+  zodem is specifically a protobuf/Connect play, not a REST one.
+- **By-hand wiring** is where every one of the above started, and exactly the three-times-defined
+  problem from [The problem](#the-problem) above — fine for a prototype, a liability past that.
+
 ## Packages
 
 | Package | Purpose |
