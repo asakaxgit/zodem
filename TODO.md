@@ -4,6 +4,12 @@ Reconciled from the original project handoff doc against the current codebase. C
 are verified shipped (tests pass, behavior confirmed in this repo); unchecked items are not
 yet implemented anywhere in the tree.
 
+## Priority
+
+- [ ] **Japanese documentation** — translate `README.md` into Japanese (`README.ja.md`),
+      linked from the top of the English README with a language switcher, the way
+      multi-language OSS READMEs usually do. Ahead of everything else below.
+
 ## Roadmap phases
 
 - [x] **Phase 1 — MVP generator**: walker, IR, lockfile (load/validate/sync/write), `.proto`
@@ -51,6 +57,14 @@ yet implemented anywhere in the tree.
 - [ ] JSON Schema / LLM tool-call & structured-output emission from the same IR — this is the
       "AI" destination in the README tagline; no code exists for it yet. Would be a new
       emitter alongside `@zodem/proto` and `@zodem/codec`, consuming the same walker output.
+- [ ] `zodem-form` (naming TBD — `@zodem/form` would match the existing `@zodem/{proto,codec,cli}`
+      scoping convention better) — generate a form schema (fields + constraints) from the same
+      walker/IR. The Phase 5 protovalidate rule collection (`IRField.rules`: min/max length,
+      pattern, required, email/uuid/url/ipv4/ipv6 format, numeric bounds, array size, …) maps
+      almost directly onto form field constraints, so this is mostly a new emitter, not new
+      walker work. Open questions: framework-agnostic output vs. optional framework bindings
+      (mirroring how `@zodem/codec` stays runtime-agnostic while the fullstack example wires up
+      React); package scope/naming.
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
