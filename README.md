@@ -441,10 +441,13 @@ pnpm example:dev        # run the server and the web app together
 | Removed-type tombstoning, `buf breaking` as an optional CI check | ✅ shipped |
 | Emit `buf.validate` (protovalidate) annotations from Zod checks (`min`, `email`, `regex`, …) | ✅ shipped |
 | **JSON Schema / LLM tool-call & structured-output emission from the same IR** | ⬜ planned |
+| **`zodem-form` — generate a form schema (fields + constraints) from the same IR** | ⬜ planned |
 
-That last row is the "AI" in the tagline above: the walker already turns a Zod schema into a
-package-agnostic IR — an LLM-tool-schema emitter is one more consumer of it, the same way
-`@zodem/proto` and `@zodem/codec` are today. It hasn't been built yet.
+The last two rows are both new consumers of the same walker/IR, the same way `@zodem/proto` and
+`@zodem/codec` are today — neither has been built yet. The JSON Schema/LLM row is the "AI" in the
+tagline above. The `zodem-form` row would reuse the Phase 5 protovalidate rule collection
+(`IRField.rules`) almost directly, since form field constraints (required, min/max, pattern,
+email/uuid format, …) are largely the same information.
 
 ## Development
 
