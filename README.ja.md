@@ -10,10 +10,7 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-10.34-F69220)](https://pnpm.io)
 
-**zodem**はZod スキーマをそのままワイヤーコントラクトに変換します。`zodem.message()`を一つ書くだけで、
-`.proto` ファイル、リファクタしても壊れない安定した protobuf フィールド番号、そしてZod 形式の値と
-ワイヤー上のバイト列を相互変換するランタイムコーデックが手に入ります — 同じスキーマが
-ブラウザのフォーム *と* サーバーハンドラの両方を検証します。
+**zodem**はZod スキーマをそのままワイヤーコントラクトに変換します。`zodem.message()`を一つ書くだけで、`.proto` ファイル、リファクタしても壊れない安定したprotobuf フィールド番号、そしてZod 形式の値とワイヤー上のバイト列を相互変換するランタイムコーデックが手に入ります — 同じスキーマがブラウザのフォーム *と* サーバーハンドラの両方を検証します。
 
 ```bash
 pnpm add zod @zodem/core @zodem/proto @zodem/codec
@@ -30,11 +27,9 @@ pnpm add -D @zodem/cli
 2. **フロントエンドとバックエンド間のワイヤーコントラクト** — gRPC / Protobuf
 3. **バックエンドのバリデーション** — ハンドラ内のリクエスト検証
 
-編集のたびにこの 3 箇所すべてを手で直し、同期が取れていることを祈ることになります。zodemは
-単一のZod スキーマを、この 3 つすべての単一の情報源にします。
+編集のたびにこの 3 箇所すべてを手で直し、同期が取れていることを祈ることになります。zodemは単一のZod スキーマを、この 3 つすべての単一の情報源にします。
 
-> 1 つのZod スキーマ（`CreateUserRequest`）が、このフォーム *と* サーバーのConnect ハンドラの
-> 両方を検証します。リクエストは実際のConnect/protobuf ワイヤープロトコルで送られます。
+> 1 つのZod スキーマ（`CreateUserRequest`）が、このフォーム *と* サーバーのConnect ハンドラの両方を検証します。リクエストは実際のConnect/protobuf ワイヤープロトコルで送られます。
 > — [フルスタックの例](#フルスタックの例) から抜粋
 
 ## Zodを入れると`.proto`が出てくる
@@ -84,17 +79,14 @@ message User {
 }
 ```
 
-`User`は依然としてごく普通の`z.object()`です — `User.parse(...)` / `.safeParse(...)`は
-これまでと全く同じように動作します。`zodem.message()`は、それに加えてこのスキーマを
-protobufのフルネームで登録するだけです。これにより、walkerがこのスキーマへの参照を
-解決できるようになります。
+`User`は依然としてごく普通の`z.object()`です — `User.parse(...)` / `.safeParse(...)`はこれまでと全く同じように動作します。`zodem.message()`は、それに加えてこのスキーマをprotobufのフルネームで登録するだけです。これにより、walkerがこのスキーマへの参照を解決できるようになります。
 
 ## クイックスタート
 
 ```ts
 // zodem.config.ts
 export default {
-  entry: ["src/schemas/**/*.ts"],   // zodem.message() / zodem.service() を呼び出すモジュール
+  entry: ["src/schemas/**/*.ts"],   // zodem.message() / zodem.service()を呼び出すモジュール
   outDir: "proto",                  // 生成された .proto ファイルの出力先
   lockfile: "zodem.lock.json",      // コミットする — フィールド番号を安定させる要
 };
@@ -105,9 +97,7 @@ npx zodem generate
 # wrote 1 proto file(s) and zodem.lock.json
 ```
 
-`proto/`と`zodem.lock.json`の両方をコミットしてください。以降は、スキーマを変更するたびに
-`zodem generate`を実行し、CIでは`zodem generate --check`を実行してコミットし忘れを
-検知します。
+`proto/`と`zodem.lock.json`の両方をコミットしてください。以降は、スキーマを変更するたびに`zodem generate`を実行し、CIでは`zodem generate --check`を実行してコミットし忘れを検知します。
 
 ## 仕組み
 
@@ -122,31 +112,24 @@ flowchart LR
     C --> Codec["encode() / decode()<br/>at runtime"]
 ```
 
-Zodの内部実装に触れるのはwalkerだけです（Zod 4が公認するlibrary-author向けAPIである
-`_zod.def`を読み取ります）。それより下流の処理 — ロックファイルの同期、`.proto` エミッタ、
-コーデック — はすべて同じ素のIRの上で動作します。
+Zodの内部実装に触れるのはwalkerだけです（Zod 4が公認するlibrary-author向けAPIである`_zod.def`を読み取ります）。それより下流の処理 — ロックファイルの同期、`.proto` エミッタ、コーデック — はすべて同じ素のIRの上で動作します。
 
 ## 安定したワイヤー番号を保証する
 
-このロックファイルこそが、実際のワイヤープロトコルとして安全に使える理由です。フィールド番号は
-一度だけ、単調増加するカウンタから割り当てられ、二度と動きません。
+このロックファイルこそが、実際のワイヤープロトコルとして安全に使える理由です。フィールド番号は一度だけ、単調増加するカウンタから割り当てられ、二度と動きません。
 
-- **キーの順序は一切関係ありません。** Zod スキーマ内でフィールドをどう並べ替えても、生成される
-  `.proto`とロックファイルはバイト単位で同一になります。
+- **キーの順序は一切関係ありません。** Zod スキーマ内でフィールドをどう並べ替えても、生成される`.proto`とロックファイルはバイト単位で同一になります。
 - **フィールドの削除は、その番号を永久に予約します。**
   ```proto
   reserved 5;
   reserved "nickname";
   ```
-  その後 *新しい* フィールドを追加すると新しい番号が割り当てられます — 削除された番号は、
-  同じ名前のフィールドが戻ってきても二度と再利用されません。
-- **互換性のない変更は、ワイヤーに黙って書き込まれるのではなく検知されます。** フィールドの型を
-  ワイヤー互換性のないものに変更すると、ビルドが失敗します。
+  その後 *新しい* フィールドを追加すると新しい番号が割り当てられます — 削除された番号は、同じ名前のフィールドが戻ってきても二度と再利用されません。
+- **互換性のない変更は、ワイヤーに黙って書き込まれるのではなく検知されます。** フィールドの型をワイヤー互換性のないものに変更すると、ビルドが失敗します。
   > `Breaking change at User.id: type changed from "string" to "int32", which is not
   > wire-compatible. Remove the field (it becomes reserved) and add a new one instead, or
   > re-run with --allow-breaking to force it.`
-  `int32 ↔ int64`、`uint32 ↔ uint64`の拡大や`enum ↔ int32`は許可されます（縮小方向は
-  警告になります）。それ以外はすべて`--allow-breaking`か新しいフィールドが必要です。
+  `int32 ↔ int64`、`uint32 ↔ uint64`の拡大や`enum ↔ int32`は許可されます（縮小方向は警告になります）。それ以外はすべて`--allow-breaking`か新しいフィールドが必要です。
 - **protobufの予約範囲は尊重されます。** `19000–19999`の番号は自動的にスキップされます。
 
 ```json
@@ -161,16 +144,11 @@ Zodの内部実装に触れるのはwalkerだけです（Zod 4が公認するlib
 }
 ```
 
-既存の`.proto` コントラクトに合わせるなど、特定の番号を固定したい場合はどうすればよいでしょうか？
-`.meta({ field: 5 })`が抜け道です — ロックファイルと矛盾するピン留めは、黙ってずれていくのではなく
-大声でエラーになります。
+既存の`.proto` コントラクトに合わせるなど、特定の番号を固定したい場合はどうすればよいでしょうか？`.meta({ field: 5 })`が抜け道です — ロックファイルと矛盾するピン留めは、黙ってずれていくのではなく大声でエラーになります。
 
 ## ワイヤーを壊さずにリネームする
 
-上記の同期アルゴリズムにとって、単純なリネームは*削除して追加*したように見えます — 古いフィールド
-番号は`reserved`に送られ、リネーム後のフィールドはまったく新しい番号を引きます。これは、古い
-フィールド名の番号をまだエンコードしているすべてのクライアントを黙って壊してしまいます。
-`zodem rename`は、番号を保持したままロックファイルを直接編集します。
+上記の同期アルゴリズムにとって、単純なリネームは*削除して追加*したように見えます — 古いフィールド番号は`reserved`に送られ、リネーム後のフィールドはまったく新しい番号を引きます。これは、古いフィールド名の番号をまだエンコードしているすべてのクライアントを黙って壊してしまいます。`zodem rename`は、番号を保持したままロックファイルを直接編集します。
 
 ```bash
 zodem rename field acme.user.v1.User nickname full_name
@@ -229,9 +207,7 @@ Usage:
 | `.meta({ name })` | 入れ子のメッセージ/enum 名を上書きする | |
 | `.meta({ validate: false })` | このフィールドのprotovalidate ルールを抑制する | `validate` 設定フラグを上書きする。[バリデーション](#バリデーション) を参照 |
 
-`.nullable()`はwell-knownなラッパー型を持つすべてのスカラー（`string`、`bool`、
-`int32`/`int64`、`uint32`/`uint64`、`float`/`double`、`bytes`）をラップします —
-`sint*`/`fixed*`にはラッパーが存在しないため、代わりに例外を投げます。
+`.nullable()`はwell-knownなラッパー型を持つすべてのスカラー（`string`、`bool`、`int32`/`int64`、`uint32`/`uint64`、`float`/`double`、`bytes`）をラップします — `sint*`/`fixed*`にはラッパーが存在しないため、代わりに例外を投げます。
 
 ### 意図的にサポートしていないもの
 
@@ -274,14 +250,11 @@ message Container {
 ランタイムでは、コーデックがprotobuf-esのネイティブな`{ case, value }` ADTを代わりに扱います。
 `{ shape: { kind: "circle", radius: 5 } }` ↔ `{ shape: { case: "circle", value: { radius: 5 } } }`
 
-**入れ子のコレクションは透過的なラッパーメッセージになります。** proto3は`repeated repeated T`を
-禁止しているため、`z.array(z.array(z.string()))`は`repeated MatrixList matrix`になり、ワイヤー上
-には 1 フィールドの合成メッセージが乗ります — しかしコーデックはそれを完全に隠します。
+**入れ子のコレクションは透過的なラッパーメッセージになります。** proto3は`repeated repeated T`を禁止しているため、`z.array(z.array(z.string()))`は`repeated MatrixList matrix`になり、ワイヤー上には 1 フィールドの合成メッセージが乗ります — しかしコーデックはそれを完全に隠します。
 `{ matrix: [["a","b"],["c"]] }` ↔ `{ matrix: [{ values: ["a","b"] }, { values: ["c"] }] }`
 デコード時にはプレーンな入れ子配列がそのまま返ってきます。
 
-**`z.lazy()`による再帰型**。ただし再帰する型が登録済みの`zodem.message()`であることが
-条件です。
+**`z.lazy()`による再帰型**。ただし再帰する型が登録済みの`zodem.message()`であることが条件です。
 
 ```ts
 export const Category = zodem.message("acme.cat.v1.Category", {
@@ -292,11 +265,7 @@ export const Category = zodem.message("acme.cat.v1.Category", {
 
 ## バリデーション
 
-Zodのチェック（`.min()`、`.email()`、`.uuid()`、`.regex()`など）は常にスキーマから読み取られ
-IRに載ります — `zodem.config.ts`で`validate`を有効にすると、それらを
-[protovalidate](https://protovalidate.com/)の`buf.validate` フィールドオプションとしても
-出力できます。これにより、TypeScript 以外のバックエンドも、ワイヤー形状だけでなくZod スキーマが
-強制しているのと同じルールを受け取れます。
+Zodのチェック（`.min()`、`.email()`、`.uuid()`、`.regex()`など）は常にスキーマから読み取られIRに載ります — `zodem.config.ts`で`validate`を有効にすると、それらを[protovalidate](https://protovalidate.com/)の`buf.validate` フィールドオプションとしても出力できます。これにより、TypeScript以外のバックエンドも、ワイヤー形状だけでなくZod スキーマが強制しているのと同じルールを受け取れます。
 
 ```ts
 // zodem.config.ts
@@ -326,9 +295,7 @@ message User {
 }
 ```
 
-`validate`は**デフォルトでオフ**です — 明示的に有効化しない限り、生成される出力はバイト単位で
-同一のままです。そしてこれはプロジェクト単位ではなくフィールド単位の設定です。`.meta({ validate:
-false })`は、設定フラグがオンであっても、そのフィールドだけルールを抑制します。
+`validate`は**デフォルトでオフ**です — 明示的に有効化しない限り、生成される出力はバイト単位で同一のままです。そしてこれはプロジェクト単位ではなくフィールド単位の設定です。`.meta({ validate: false })`は、設定フラグがオンであっても、そのフィールドだけルールを抑制します。
 
 | Zodチェック | protovalidateルール |
 |---|---|
@@ -339,20 +306,13 @@ false })`は、設定フラグがオンであっても、そのフィールド�
 | number/bigintへの`.gt()` / `.gte()` / `.lt()` / `.lte()` | 対応する数値ルールグループの`gt`/`gte`/`lt`/`lte` |
 | 配列への`.min(n)` / `.max(n)` | `repeated.min_items` / `max_items`。加えて要素自体のルールが`items`に入れ子になる |
 
-この表にないもの（`.datetime()`、`.cuid()`、カスタムの`.refine()`など）は、推測せずに単純に
-スキップされます — ルールがフィールド番号や型解決に影響することは一切ないため、ワイヤー形状は
-どちらにせよ変わりません。
+この表にないもの（`.datetime()`、`.cuid()`、カスタムの`.refine()`など）は、推測せずに単純にスキップされます — ルールがフィールド番号や型解決に影響することは一切ないため、ワイヤー形状はどちらにせよ変わりません。
 
-`buf.validate.field`は別のスキーマ — `buf/validate/validate.proto` — に由来し、あなたの
-`.proto`出力はこれをimportするようになります。[フルスタックの例](#フルスタックの例)では
-これをベンダリングしているため（`examples/fullstack/shared/proto/buf/validate/validate.proto`）、
-`buf lint`/`buf build`とCIはBSRに一切アクセスする必要がありません。自分のコピーが欲しい場合は
-`buf export buf.build/bufbuild/protovalidate`で取得できます。
+`buf.validate.field`は別のスキーマ — `buf/validate/validate.proto` — に由来し、あなたの`.proto`出力はこれをimportするようになります。[フルスタックの例](#フルスタックの例)ではこれをベンダリングしているため（`examples/fullstack/shared/proto/buf/validate/validate.proto`）、`buf lint`/`buf build`とCIはBSRに一切アクセスする必要がありません。自分のコピーが欲しい場合は`buf export buf.build/bufbuild/protovalidate`で取得できます。
 
 ## ランタイムコーデック
 
-`@zodem/codec`は、同じロック同期済みのIRから直接encode/decode 関数を構築します —
-生成されたprotobuf-esコードへの依存はありません。
+`@zodem/codec`は、同じロック同期済みのIRから直接encode/decode 関数を構築します — 生成されたprotobuf-esコードへの依存はありません。
 
 ```ts
 import { walkRegistry } from "@zodem/core";
@@ -365,9 +325,7 @@ const wire = codec.encode(userValue);   // Zod value -> plain object for protobu
 const back = codec.decode(wire);        // -> Zod-shaped value again
 ```
 
-enumの文字列 ↔ 数値、`Date` ↔ `Timestamp`、`null` ↔ ラッパー型の"not set"、
-`oneof` ↔ `{ case, value }`、そして上記のリストラッパーの展開まで扱います — 実際のワイヤー
-バイト列を介したラウンドトリップで検証済みです。
+enumの文字列 ↔ 数値、`Date` ↔ `Timestamp`、`null` ↔ ラッパー型の"not set"、`oneof` ↔ `{ case, value }`、そして上記のリストラッパーの展開まで扱います — 実際のワイヤーバイト列を介したラウンドトリップで検証済みです。
 
 ```ts
 const protoMessage = create(CreateUserRequestSchema, codec.encode(parsed) as never);
@@ -393,25 +351,19 @@ service UserService {
 }
 ```
 
-入出力メッセージの名前は`<Method>Request` / `<Method>Response`である必要があります —
-これは生成時にbufの標準RPC 命名lint ルールに照らしてチェックされるため、生成物が
-`buf lint`で失敗することはありません。
+入出力メッセージの名前は`<Method>Request` / `<Method>Response`である必要があります — これは生成時にbufの標準RPC 命名lint ルールに照らしてチェックされるため、生成物が`buf lint`で失敗することはありません。
 
 ## フルスタックの例
 
-`examples/fullstack/`は、上記の`User` スキーマの上に構築された、実際に動く 3 パッケージ構成の
-アプリです。
+`examples/fullstack/`は、上記の`User` スキーマの上に構築された、実際に動く 3 パッケージ構成のアプリです。
 
-- **`@example/shared`** — Zod スキーマ、生成された`.proto`、`protoc-gen-es`の出力、
-  そしてコーデックのブートストラップ
-- **`@example/server`** — `node:http`上で動く[Connect](https://connectrpc.com/)サーバー。
-  リクエストをコーデックでデコードし、*同じ*`zod.CreateUserRequest`で検証する
-- **`@example/web`** — React + Vite クライアント。同じスキーマでフォームを検証してから、
-  実際のConnect/protobuf リクエストを送信する
+- **`@example/shared`** — Zod スキーマ、生成された`.proto`、`protoc-gen-es`の出力、そしてコーデックのブートストラップ
+- **`@example/server`** — `node:http`上で動く[Connect](https://connectrpc.com/)サーバー。リクエストをコーデックでデコードし、*同じ*`zod.CreateUserRequest`で検証する
+- **`@example/web`** — React + Vite クライアント。同じスキーマでフォームを検証してから、実際のConnect/protobuf リクエストを送信する
 
 ```bash
-pnpm example:generate   # 共有スキーマから proto/ とロックファイルを再生成する
-pnpm example:dev        # サーバーと web アプリを同時に起動する
+pnpm example:generate   # 共有スキーマからproto/とロックファイルを再生成する
+pnpm example:dev        # サーバーとweb アプリを同時に起動する
 ```
 
 ## 規約だけでなくCIで強制する
@@ -423,16 +375,11 @@ pnpm example:dev        # サーバーと web アプリを同時に起動する
 - run: pnpm run example:buf:breaking  # optional: reports wire-breaking drift, doesn't block
 ```
 
-> スキーマは変更されたのに`proto/`やロックファイルが再生成・コミットされていない場合、
-> ビルドを失敗させます — これがこのプロジェクトの売りそのものなので、CIで実際に強制しています。
-> `buf breaking`はすべてのPRで`main`に対して実行される非ブロッキングのチェックです —
-> マージをゲートすることなく、ワイヤー互換性のドリフトを報告します。
+> スキーマは変更されたのに`proto/`やロックファイルが再生成・コミットされていない場合、ビルドを失敗させます — これがこのプロジェクトの売りそのものなので、CIで実際に強制しています。`buf breaking`はすべてのPRで`main`に対して実行される非ブロッキングのチェックです — マージをゲートすることなく、ワイヤー互換性のドリフトを報告します。
 
 ## 比較
 
-ここに挙げたものはどれも、「フロントエンドとバックエンドとワイヤーを同期させる」という課題を、
-それぞれ別のやり方で解決しています。zodemの立ち位置は特に、Zodを書き続けたまま、本物の
-多言語対応ワイヤーフォーマットと安定したフィールド番号を無料で手に入れる、というものです。
+ここに挙げたものはどれも、「フロントエンドとバックエンドとワイヤーを同期させる」という課題を、それぞれ別のやり方で解決しています。zodemの立ち位置は特に、Zodを書き続けたまま、本物の多言語対応ワイヤーフォーマットと安定したフィールド番号を無料で手に入れる、というものです。
 
 | | **zodem** | **tRPC** | スキーマ先行のprotobuf（`buf generate` / `protoc-gen-es`） | **Zodios** / `zod-to-openapi` | **手動配線** |
 |---|---|---|---|---|---|
@@ -445,17 +392,10 @@ pnpm example:dev        # サーバーと web アプリを同時に起動する
 
 どれも「間違い」というわけではなく、それぞれ違う問いに答えているだけです。
 
-- **tRPCを選ぶ**べきなのは、1 つのリポジトリ内でTypeScriptのみで完結し、TS以外のクライアントや
-  本物のバイナリワイヤーフォーマットが今後も不要な場合です — その場合に限り、上記のどれよりも
-  シンプルです。
-- **スキーマ先行のprotobufを選ぶ**べきなのは、`.proto`がすでにあなたのコントラクトである場合
-  （別チームが所有している、あるいはTS以外のサービスが主な作者である場合）です — zodemはその
-  逆方向、つまりZodを信頼できる唯一の情報源とすることを前提にしています。
-- **Zodios/`zod-to-openapi`を選ぶ**べきなのは、REST/JSON + OpenAPIがあなたの選ぶワイヤー
-  フォーマットである場合です — zodemはあくまでprotobuf/Connect向けであり、RESTではありません。
-- **手動配線**は、上記すべての出発点であり、まさに[解決する課題](#解決する課題)で挙げた
-  「3 回定義する」問題そのものです — プロトタイプならそれでいいですが、それを超えると負債に
-  なります。
+- **tRPCを選ぶ**べきなのは、1 つのリポジトリ内でTypeScriptのみで完結し、TS以外のクライアントや本物のバイナリワイヤーフォーマットが今後も不要な場合です — その場合に限り、上記のどれよりもシンプルです。
+- **スキーマ先行のprotobufを選ぶ**べきなのは、`.proto`がすでにあなたのコントラクトである場合（別チームが所有している、あるいはTS以外のサービスが主な作者である場合）です — zodemはその逆方向、つまりZodを信頼できる唯一の情報源とすることを前提にしています。
+- **Zodios/`zod-to-openapi`を選ぶ**べきなのは、REST/JSON + OpenAPIがあなたの選ぶワイヤーフォーマットである場合です — zodemはあくまでprotobuf/Connect向けであり、RESTではありません。
+- **手動配線**は、上記すべての出発点であり、まさに[解決する課題](#解決する課題)で挙げた「3 回定義する」問題そのものです — プロトタイプならそれでいいですが、それを超えると負債になります。
 
 ## パッケージ
 
@@ -493,10 +433,7 @@ pnpm typecheck
 pnpm lint
 ```
 
-テストは[Vitest](https://vitest.dev/)上で実行されます。CLIのテストスイートは、ライブラリを
-プロセス内から呼び出すのではなく、実際にビルドされた`zodem`バイナリを子プロセスとして起動します
-— これにより、テストされる内容が実際の呼び出しと完全に一致します。生成された`.proto`出力は、
-同じテストスイート内でさらに`buf lint`と`buf build`によっても検証されます。
+テストは[Vitest](https://vitest.dev/)上で実行されます。CLIのテストスイートは、ライブラリをプロセス内から呼び出すのではなく、実際にビルドされた`zodem`バイナリを子プロセスとして起動します — これにより、テストされる内容が実際の呼び出しと完全に一致します。生成された`.proto`出力は、同じテストスイート内でさらに`buf lint`と`buf build`によっても検証されます。
 
 ## ライセンス
 
