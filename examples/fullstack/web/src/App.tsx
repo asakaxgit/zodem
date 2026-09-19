@@ -67,7 +67,7 @@ export function App() {
       const initObject = requestCodec.encode(validation.data);
       const response = await client.createUser(initObject as never);
       if (response.user) {
-        setResult(userCodec.decode(response.user as unknown as Record<string, unknown>) as z.infer<typeof zod.User>);
+        setResult(userCodec.decode(response.user) as z.infer<typeof zod.User>);
         setForm(initialForm);
       }
     } catch (err) {

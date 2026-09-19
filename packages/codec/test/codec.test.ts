@@ -48,7 +48,7 @@ describe("codec: scalars and nesting round-trip", () => {
     expect(proto.address).toEqual({ city: "NYC", country: "US" });
     expect(proto.nickname).toBeUndefined(); // omitted, not present in zodValue
 
-    const back = codec.decode(proto as Record<string, unknown>);
+    const back = codec.decode(proto);
     expect(back).toEqual(zodValue);
   });
 
@@ -93,7 +93,7 @@ describe("codec: discriminated union <-> oneof ADT", () => {
     const proto = codec.encode(zodValue);
     expect(proto.shape).toEqual({ case: "circle", value: { radius: 5 } });
 
-    const back = codec.decode(proto as Record<string, unknown>);
+    const back = codec.decode(proto);
     expect(back).toEqual(zodValue);
   });
 
@@ -111,7 +111,7 @@ describe("codec: maps", () => {
     const codec = createCodecs(synced()).get("acme.a.v1.A")!;
     const value = { tags: { en: "hello", ja: "こんにちは" } };
     expect(codec.encode(value)).toEqual({ tags: { en: "hello", ja: "こんにちは" } });
-    expect(codec.decode(codec.encode(value) as Record<string, unknown>)).toEqual(value);
+    expect(codec.decode(codec.encode(value))).toEqual(value);
   });
 
   it("runs the value codec per entry (map<string, enum>)", () => {
@@ -120,7 +120,7 @@ describe("codec: maps", () => {
     const value = { rolesByUser: { alice: "admin" as const, bob: "member" as const } };
     const proto = codec.encode(value);
     expect(proto.rolesByUser).toEqual({ alice: 1, bob: 2 }); // ROLE_ADMIN=1, ROLE_MEMBER=2
-    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+    expect(codec.decode(proto)).toEqual(value);
   });
 });
 
@@ -151,7 +151,7 @@ describe("codec: z.lazy() recursion", () => {
     expect(proto.children).toHaveLength(2);
     expect((proto.children as Record<string, unknown>[])[1]!.children).toHaveLength(1);
 
-    const back = codec.decode(proto as Record<string, unknown>);
+    const back = codec.decode(proto);
     expect(back).toEqual(value);
   });
 });
@@ -166,7 +166,7 @@ describe("codec: synthesized list-wrapper messages (nested repeated/map values)"
     // on the wire this is `repeated MatrixList matrix`, each a { values: [...] } message —
     // but the codec must hide that entirely; the Zod side never sees a wrapper object.
     expect(proto.matrix).toEqual([{ values: ["a", "b"] }, { values: ["c"] }]);
-    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+    expect(codec.decode(proto)).toEqual(value);
   });
 
   it("round-trips a map value that's an array, as a plain array, not a { values } object", () => {
@@ -176,6 +176,23 @@ describe("codec: synthesized list-wrapper messages (nested repeated/map values)"
 
     const proto = codec.encode(value);
     expect(proto.groups).toEqual({ fruits: { values: ["apple", "banana"] }, veggies: { values: ["carrot"] } });
-    expect(codec.decode(proto as Record<string, unknown>)).toEqual(value);
+    expect(codec.decode(proto)).toEqual(value);
+  });
+});
+
+describe("codec: decode() accepts any object, no cast required", () => {
+  it("decodes a class instance directly — no `as unknown as Record<string, unknown>` needed", () => {
+    // A protobuf-es generated Message is a class instance with no index
+    // signature, same shape category as this: decode's parameter type must
+    // be `unknown`, not `Record<string, unknown>`, or every real caller
+    // would need a cast just to call it. This test would fail to typecheck
+    // (not just fail at runtime) if that regressed.
+    class FakeProtoMessage {
+      city = "Kyoto";
+      country = "JP";
+    }
+    zodem.message("acme.a.v1.A", { city: z.string(), country: z.string() });
+    const codec = createCodecs(synced()).get("acme.a.v1.A")!;
+    expect(codec.decode(new FakeProtoMessage())).toEqual({ city: "Kyoto", country: "JP" });
   });
 });

@@ -19,7 +19,7 @@ function routes(router: ConnectRouter): void {
   router.service(proto.UserService, {
     async createUser(req) {
       const requestCodec = codecs.get("acme.user.v1.CreateUserRequest")!;
-      const raw = requestCodec.decode(req as unknown as Record<string, unknown>);
+      const raw = requestCodec.decode(req);
       const parsed = zod.CreateUserRequest.safeParse(raw);
       if (!parsed.success) {
         throw new ConnectError(zodErrorMessage(parsed.error), Code.InvalidArgument);
@@ -38,7 +38,7 @@ function routes(router: ConnectRouter): void {
 
     async getUser(req) {
       const requestCodec = codecs.get("acme.user.v1.GetUserRequest")!;
-      const raw = requestCodec.decode(req as unknown as Record<string, unknown>);
+      const raw = requestCodec.decode(req);
       const parsed = zod.GetUserRequest.safeParse(raw);
       if (!parsed.success) {
         throw new ConnectError(zodErrorMessage(parsed.error), Code.InvalidArgument);

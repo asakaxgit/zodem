@@ -10,7 +10,15 @@ import type { IREnum, IRField, IRMessage, IROneof, IRType, WellKnownTypeName } f
  */
 export interface Codec<T = Record<string, unknown>> {
   encode(value: T): Record<string, unknown>;
-  decode(message: Record<string, unknown>): T;
+  /**
+   * `unknown`, not `Record<string, unknown>`: the real input is a
+   * protobuf-es generated `Message` instance, which has no index signature
+   * and so isn't structurally assignable to `Record<string, unknown>` —
+   * every caller would need `as unknown as Record<string, unknown>` to call
+   * this otherwise. decode reads fields off it dynamically regardless of
+   * its static type, so `unknown` is both accurate and cast-free for callers.
+   */
+  decode(message: unknown): T;
 }
 
 interface CompiledMessage {
