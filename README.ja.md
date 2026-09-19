@@ -479,11 +479,9 @@ pnpm example:dev        # サーバーと web アプリを同時に起動する
 | **同じIRからのJSON Schema / LLM tool-call・構造化出力エミッション** | ⬜ 計画中 |
 | **`zodem-form` — 同じIRからフォームスキーマ（フィールドと制約）を生成する** | ⬜ 計画中 |
 
-最後の 2 行はどちらも、同じwalker/IRの新しい消費者です — `@zodem/proto`や`@zodem/codec`と
-同様に、どちらもまだ実装されていません。JSON Schema/LLMの行は、冒頭のタグラインにある"AI"の
-部分です。`zodem-form`の行は、Phase 5のprotovalidate ルール収集（`IRField.rules`）をほぼ
-そのまま再利用できます — フォームのフィールド制約（必須、min/max、パターン、email/uuid形式など）
-は、ほとんど同じ情報だからです。
+最後の2つはどちらも、`@zodem/proto`や`@zodem/codec`と同様にwalker/IRの新しいコンシューマです — 、どちらもまだ実装されていません。
+- JSON Schema/LLMの行は、冒頭のタグラインにある"AI"の部分です。
+- `zodem-form`の行は、Phase 5のprotovalidate ルール収集（`IRField.rules`）をほぼそのまま再利用できます — フォームのフィールド制約（必須、min/max、パターン、email/uuid形式など）は、ほとんど同じ情報だからです。
 
 ## 開発
 
