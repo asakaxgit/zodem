@@ -31,7 +31,7 @@ describe("shared codecs: real wire round-trip", () => {
     const bytes = toBinary(CreateUserRequestSchema, protoMessage);
     const decodedProto = fromBinary(CreateUserRequestSchema, bytes);
 
-    const decoded = codec.decode(decodedProto as unknown as Record<string, unknown>);
+    const decoded = codec.decode(decodedProto);
     expect(decoded).toEqual(parsed);
     expect(() => ZodCreateUserRequest.parse(decoded)).not.toThrow();
   });
@@ -51,7 +51,7 @@ describe("shared codecs: real wire round-trip", () => {
     expect(proto.role).toBe(2); // ROLE_MEMBER
 
     const bytes = toBinary(CreateUserRequestSchema, proto);
-    const back = codec.decode(fromBinary(CreateUserRequestSchema, bytes) as unknown as Record<string, unknown>);
+    const back = codec.decode(fromBinary(CreateUserRequestSchema, bytes));
     expect(back).toEqual(zodValue);
   });
 });
