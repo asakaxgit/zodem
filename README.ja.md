@@ -353,6 +353,32 @@ service UserService {
 
 入出力メッセージの名前は`<Method>Request` / `<Method>Response`である必要があります — これは生成時にbufの標準RPC 命名lint ルールに照らしてチェックされるため、生成物が`buf lint`で失敗することはありません。
 
+## LLM ツールスキーマ
+
+`@zodem/llm`は`zodem.message()`/`zodem.service()`をJSON SchemaとベンダーごとのTool-call 定義に変換します — 冒頭のタグラインにある"AI"の部分です。`@zodem/proto`や`@zodem/codec`とは違い、意図的にwalker/IRを経由しません — あのIRはprotobufが表現できる範囲に合わせて作られているため、`z.union()`、`z.tuple()`、`z.intersection()`、`z.map()`、`z.set()`を拒否します。これらの制約はJSON Schemaには一切当てはまらず、Zod 4はすでに完全なネイティブコンバータ（`z.toJSONSchema()`）を持っているため、`@zodem/llm`はより制約の強い劣化版を自作する代わりに、それを実際のZod スキーマに対して直接呼び出します。
+
+```ts
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+import { toOpenAiTool, toAnthropicTool, toGeminiTool } from "@zodem/llm";
+
+export const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
+  email: z.string().email(),
+  displayName: z.string().min(1).max(100).meta({ llm: { name: "display_name" } }),
+  internalOnly: z.string().meta({ llm: false }), // ワイヤー上には存在するが、LLMからは隠す
+});
+
+toAnthropicTool({ name: "createUser", description: "Create a new user", input: CreateUserRequest });
+// { name: "createUser", description: "Create a new user", input_schema: { type: "object", properties: {
+//   email: { type: "string", format: "email" },
+//   display_name: { type: "string", minLength: 1, maxLength: 100 }
+// }, required: ["email", "display_name"], additionalProperties: false } }
+```
+
+`.meta({ llm })`はLLM向けの形状専用の抜け道です — `false`はフィールドを省略し、`{ name }`はそれをリネームします — どちらの場合もワイヤー/proto の形状とは独立しています。zodemの`.meta({ proto, field, name, validate })` キーも、`.meta()`が読み取るのと同じ`z.globalRegistry`に乗っています。`@zodem/llm`は返す前にそれらを取り除くため、Tool スキーマに漏れることは一切ありません。
+
+`toOpenAiTool` / `toAnthropicTool` / `toGeminiTool`は1 つのメソッドの入力スキーマをそれぞれのベンダーのTool-call フォーマットでラップし、`toolsForService(fullName, vendor)`は登録済みの`zodem.service()`のすべてのメソッドを一度に処理します。Geminiの関数宣言スキーマ（OpenAPI 3.0のサブセット）は`$ref`をサポートしていません — 本当に自己参照的な入力（`z.lazy()`）はGemini向けには表現できないため、`toGeminiTool`は壊れた出力を返す代わりにエラーを投げます。それ以外はすべて自動的にインライン化されます（Zodのデフォルトの挙動であり、`@zodem/llm` 自身が何かをする必要はありません）。
+
 ## フルスタックの例
 
 `examples/fullstack/`は、上記の`User` スキーマの上に構築された、実際に動く 3 パッケージ構成のアプリです。
@@ -405,6 +431,7 @@ pnpm example:dev        # サーバーとweb アプリを同時に起動する
 | [`@zodem/proto`](packages/proto) | 純粋なIR → `.proto` テキストエミッタ。決定的な出力、複数パッケージのimportに対応。 |
 | [`@zodem/codec`](packages/codec) | Zodの値とprotobuf-esオブジェクトの間を変換する、ランタイムかつIR駆動のコーデック。 |
 | [`@zodem/cli`](packages/cli) | `zodem`バイナリ — `generate`と`rename`、設定の読み込み。 |
+| [`@zodem/llm`](packages/llm) | JSON Schema/ベンダーごとのTool-call 生成 — Zod 自身の`toJSONSchema()`を直接使う。意図的にwalker/IRを経由しない。 |
 
 ## ロードマップ
 
@@ -416,12 +443,10 @@ pnpm example:dev        # サーバーとweb アプリを同時に起動する
 | `zodem.service()` → `service`/`rpc`、ストリーミング、Connect コーデック | ✅ 完了 |
 | 削除された型のトゥームストーン化、任意のCI チェックとしての`buf breaking` | ✅ 完了 |
 | Zodのチェック（`min`、`email`、`regex`など）からの`buf.validate`（protovalidate）アノテーション出力 | ✅ 完了 |
-| **同じIRからのJSON Schema / LLM tool-call・構造化出力エミッション** | ⬜ 計画中 |
-| **`zodem-form` — 同じIRからフォームスキーマ（フィールドと制約）を生成する** | ⬜ 計画中 |
+| **`@zodem/llm` — JSON Schema/ベンダーごとのTool-call 生成** | ✅ 完了 |
+| **`zodem-form` — フォームスキーマ（フィールドと制約）を生成する** | ⬜ 計画中 |
 
-最後の2つはどちらも、`@zodem/proto`や`@zodem/codec`と同様にwalker/IRの新しいコンシューマです — 、どちらもまだ実装されていません。
-- JSON Schema/LLMの行は、冒頭のタグラインにある"AI"の部分です。
-- `zodem-form`の行は、Phase 5のprotovalidate ルール収集（`IRField.rules`）をほぼそのまま再利用できます — フォームのフィールド制約（必須、min/max、パターン、email/uuid形式など）は、ほとんど同じ情報だからです。
+`@zodem/llm`の行は、冒頭のタグラインにある"AI"の部分です — [LLM ツールスキーマ](#llm-ツールスキーマ) を参照してください。他のすべてのパッケージとは異なり、これはwalker/IRではなくZod 自身のスキーマと`toJSONSchema()`の上に直接構築されています（このIRはprotobuf向けの形をしており、JSON Schemaが表現できるものすべてを表現できるわけではありません）。`zodem-form`はまだ実装されていません — 同じ理由で、walkerではなく「実際のZod スキーマの上に構築する」という同じアプローチを取ることになりそうです。
 
 ## 開発
 

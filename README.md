@@ -393,6 +393,46 @@ Method input/output messages must be named `<Method>Request` / `<Method>Response
 at generation time against buf's standard RPC naming lint rules, so the output never fails
 `buf lint` for you.
 
+## LLM tool schemas
+
+`@zodem/llm` turns a `zodem.message()`/`zodem.service()` into JSON Schema and vendor-specific
+tool-call definitions — the "AI" in the tagline above. Unlike `@zodem/proto` and `@zodem/codec`,
+it deliberately **doesn't** go through the walker/IR: that IR is shaped for what protobuf can
+represent, so it rejects `z.union()`, `z.tuple()`, `z.intersection()`, `z.map()`, and `z.set()`.
+None of those restrictions make sense for JSON Schema, and Zod 4 already ships a complete native
+converter (`z.toJSONSchema()`), so `@zodem/llm` calls that directly on the real Zod schema instead
+of reinventing a more limited version of it.
+
+```ts
+import { z } from "zod";
+import { zodem } from "@zodem/core";
+import { toOpenAiTool, toAnthropicTool, toGeminiTool } from "@zodem/llm";
+
+export const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
+  email: z.string().email(),
+  displayName: z.string().min(1).max(100).meta({ llm: { name: "display_name" } }),
+  internalOnly: z.string().meta({ llm: false }), // present on the wire, hidden from the LLM
+});
+
+toAnthropicTool({ name: "createUser", description: "Create a new user", input: CreateUserRequest });
+// { name: "createUser", description: "Create a new user", input_schema: { type: "object", properties: {
+//   email: { type: "string", format: "email" },
+//   display_name: { type: "string", minLength: 1, maxLength: 100 }
+// }, required: ["email", "display_name"], additionalProperties: false } }
+```
+
+`.meta({ llm })` is the escape hatch for the LLM-facing shape specifically — `false` omits a
+field, `{ name }` renames it — independent of the wire/proto shape either way. Zodem's own
+`.meta({ proto, field, name, validate })` keys ride the same `z.globalRegistry` `.meta()` reads
+from; `@zodem/llm` strips them before returning, so they never leak into the tool schema.
+
+`toOpenAiTool` / `toAnthropicTool` / `toGeminiTool` wrap one method's input schema in each
+vendor's tool-call format, and `toolsForService(fullName, vendor)` does every method of a
+registered `zodem.service()` at once. Gemini's function-declaration schema (an OpenAPI 3.0
+subset) has no `$ref` support — a genuinely self-referential input (`z.lazy()`) can't be
+represented for Gemini and `toGeminiTool` throws rather than emit broken output; everything else
+is inlined automatically (Zod's default behavior, not something `@zodem/llm` has to do itself).
+
 ## The full-stack example
 
 `examples/fullstack/` is a real, running three-package app built on the `User` schema above:
@@ -458,6 +498,7 @@ None of these are wrong — they're answering different questions:
 | [`@zodem/proto`](packages/proto) | Pure IR → `.proto` text emitter, deterministic output, multi-package imports. |
 | [`@zodem/codec`](packages/codec) | Runtime, IR-driven codec between Zod values and protobuf-es objects. |
 | [`@zodem/cli`](packages/cli) | The `zodem` binary — `generate` and `rename`, config loading. |
+| [`@zodem/llm`](packages/llm) | JSON Schema / vendor tool-call emission, built directly on Zod's own `toJSONSchema()` — bypasses the walker/IR on purpose. |
 
 ## Roadmap
 
@@ -469,14 +510,14 @@ None of these are wrong — they're answering different questions:
 | `zodem.service()` → `service`/`rpc`, streaming, Connect codec | ✅ shipped |
 | Removed-type tombstoning, `buf breaking` as an optional CI check | ✅ shipped |
 | Emit `buf.validate` (protovalidate) annotations from Zod checks (`min`, `email`, `regex`, …) | ✅ shipped |
-| **JSON Schema / LLM tool-call & structured-output emission from the same IR** | ⬜ planned |
-| **`zodem-form` — generate a form schema (fields + constraints) from the same IR** | ⬜ planned |
+| **`@zodem/llm` — JSON Schema / vendor tool-call emission** | ✅ shipped |
+| **`zodem-form` — generate a form schema (fields + constraints)** | ⬜ planned |
 
-The last two rows are both new consumers of the same walker/IR, the same way `@zodem/proto` and
-`@zodem/codec` are today — neither has been built yet. The JSON Schema/LLM row is the "AI" in the
-tagline above. The `zodem-form` row would reuse the Phase 5 protovalidate rule collection
-(`IRField.rules`) almost directly, since form field constraints (required, min/max, pattern,
-email/uuid format, …) are largely the same information.
+The `@zodem/llm` row is the "AI" in the tagline above — see [LLM tool schemas](#llm-tool-schemas).
+Unlike every other package, it's built directly on Zod's own schema and `toJSONSchema()`, not the
+walker/IR (the IR is protobuf-shaped and can't represent everything JSON Schema can). `zodem-form`
+is still unbuilt; it would likely follow the same "build on the real Zod schema" approach rather
+than the walker, for the same reason.
 
 ## Development
 

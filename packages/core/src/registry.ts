@@ -17,6 +17,8 @@ export interface ZodemFieldMeta {
   name?: string;
   /** Set to `false` to suppress protovalidate rule emission for this field, overriding the emitter's `validate` config flag. */
   validate?: false;
+  /** Escape hatch for @zodem/llm's JSON Schema/tool-call emission: `false` omits this field from the LLM-facing schema, `{ name }` renames it there — independent of the wire/proto shape either way. */
+  llm?: false | { name?: string };
 }
 
 export type ZodemMeta =
@@ -98,6 +100,8 @@ export interface ZodemMethodDef<
   output: Out;
   /** Which side streams. Omit for unary. */
   stream?: "server" | "client" | "bidi";
+  /** Human-readable description of this method — used as the tool `description` by @zodem/llm; Zod's `.describe()` only covers fields, not the method itself. */
+  description?: string;
 }
 
 export interface ZodemServiceDef {
