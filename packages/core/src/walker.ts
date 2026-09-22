@@ -24,17 +24,112 @@ import {
 } from "./registry.js";
 import { camelToSnake, pascalCase, upperSnake } from "./naming.js";
 
-// Zod 4 internals are read through `_zod.def`, the sanctioned library-author
-// API (see zod.dev/library-authors). It isn't meaningfully typeable from the
-// outside, so we treat it as `any` at the boundary and rely on tests +
-// buf-validated fixtures to catch drift, rather than fighting the type
-// checker over a shape that is intentionally loosely typed upstream.
-// biome-ignore lint/suspicious/noExplicitAny: intentionally untyped Zod internals, see the comment above
-type AnyDef = Record<string, any>;
-type AnySchema = z.ZodType;
+// ---------------------------------------------------------------------------
+// The Zod-internals boundary.
+//
+// Zod 4 exposes `_zod.def` as the sanctioned library-author API
+// (zod.dev/library-authors), declared publicly as just the base
+// `$ZodTypeDef` — `{ type, error?, checks? }`. The per-kind payload
+// (`shape`, `element`, `innerType`, `entries`, …) lives on the `$Zod*Def`
+// subtypes Zod also exports under `z.core`, each of which redeclares `type`
+// as a literal. Unioning the ones this walker actually reads gives a
+// genuine discriminated union — `switch (def.type)` narrows to the exact
+// def and its payload below, with no cast anywhere downstream.
+//
+// The step from the declared base type to that union is the one thing the
+// type system can't prove on its own, so it happens exactly twice in this
+// file — `defOf` and `checkDefsOf` — and nowhere else.
+// ---------------------------------------------------------------------------
 
-function defOf(schema: AnySchema): AnyDef {
-  return (schema as unknown as { _zod: { def: AnyDef } })._zod.def;
+type AnySchema = z.core.$ZodType;
+
+/**
+ * Every def kind this walker reads a payload off. The "-FormatDef" members
+ * (e.g. `$ZodStringFormatDef`, produced by `z.email()`) share their base's
+ * `type` literal ("string") but additionally carry `format`/`check` —
+ * that's the same dual shape `findFormatCheck` below has always handled:
+ * format info arrives either directly on the schema's own def, or as a
+ * separate check pushed onto `def.checks` by chaining (`z.string().email()`).
+ */
+type TypedDef =
+  | z.core.$ZodStringDef
+  | z.core.$ZodStringFormatDef
+  | z.core.$ZodNumberDef
+  | z.core.$ZodNumberFormatDef
+  | z.core.$ZodBigIntDef
+  | z.core.$ZodBigIntFormatDef
+  | z.core.$ZodArrayDef
+  | z.core.$ZodObjectDef
+  | z.core.$ZodRecordDef
+  | z.core.$ZodEnumDef
+  | z.core.$ZodLiteralDef<z.core.util.Literal>
+  | z.core.$ZodUnionDef
+  | z.core.$ZodDiscriminatedUnionDef
+  | z.core.$ZodOptionalDef
+  | z.core.$ZodNullableDef
+  | z.core.$ZodNonOptionalDef
+  | z.core.$ZodDefaultDef
+  | z.core.$ZodPrefaultDef
+  | z.core.$ZodCatchDef
+  | z.core.$ZodReadonlyDef
+  | z.core.$ZodPipeDef
+  | z.core.$ZodLazyDef;
+
+/**
+ * Every remaining Zod `type` literal (boolean, date, unknown/any, custom,
+ * tuple, …). The walker reads nothing off these but `type` itself — some
+ * map straight to a proto type, the rest are rejected with
+ * UnsupportedTypeError — so there's no payload to model here, and modelling
+ * only `type` is what keeps every one of those `case`s reachable while
+ * still making e.g. `def.shape` a compile error on this branch.
+ */
+type OpaqueDef = z.core.$ZodTypeDef & { type: Exclude<z.core.$ZodTypeDef["type"], TypedDef["type"]> };
+
+type ZodemDef = TypedDef | OpaqueDef;
+
+function defOf(schema: AnySchema): ZodemDef {
+  // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one sanctioned crossing into Zod internals (zod.dev/library-authors). A downcast from the declared base `$ZodTypeDef` to the per-kind subtype Zod actually constructed; everything downstream is fully typed.
+  return schema._zod.def as ZodemDef;
+}
+
+/** Every check-def kind this walker reads a payload off (`def.checks[i]`). */
+type TypedCheckDef =
+  | z.core.$ZodCheckLessThanDef
+  | z.core.$ZodCheckGreaterThanDef
+  | z.core.$ZodCheckMinLengthDef
+  | z.core.$ZodCheckMaxLengthDef
+  | z.core.$ZodCheckLengthEqualsDef
+  | z.core.$ZodCheckNumberFormatDef
+  | z.core.$ZodCheckBigIntFormatDef
+  | z.core.$ZodCheckStringFormatDef
+  | z.core.$ZodCheckRegexDef
+  | z.core.$ZodCheckStartsWithDef
+  | z.core.$ZodCheckEndsWithDef
+  | z.core.$ZodCheckIncludesDef
+  | z.core.$ZodCheckLowerCaseDef
+  | z.core.$ZodCheckUpperCaseDef;
+
+/**
+ * A check kind this walker doesn't model (e.g. "mime_type", "overwrite")
+ * still lands here at runtime — the header comment above `STRING_FORMAT_RULE`
+ * is the actual contract: anything not matched by a `case`/`if` below is
+ * silently skipped, never guessed, so an imprecise type for that case costs
+ * nothing.
+ */
+type ZodemCheckDef = TypedCheckDef;
+
+/** The checks attached to a def, already unwrapped to their own defs. */
+function checkDefsOf(def: ZodemDef): ZodemCheckDef[] {
+  // Every concrete `$ZodCheck<T>[]` a def declares (`$ZodCheck<string>[]`,
+  // `$ZodCheck<boolean>[]`, …) is assignable to `$ZodCheck<never>[]` — `in T`
+  // is contravariant, and `never` is assignable to any `T` — so this one
+  // annotation is enough to unify every def's `checks` into a single
+  // concrete array type before mapping over it.
+  const checks: readonly z.core.$ZodCheck<never>[] = def.checks ?? [];
+  return checks.map((c) => {
+    // biome-ignore lint/nursery/noUnsafeTypeAssertion: same Zod-internals boundary as defOf — `$ZodCheckDef` downcast to the per-check subtype Zod constructed.
+    return c._zod.def as ZodemCheckDef;
+  });
 }
 
 export class WalkerContext {
@@ -76,7 +171,7 @@ export function walkRegistry(): WalkResult {
 
 type UnwrapResult = {
   schema: AnySchema;
-  def: AnyDef;
+  def: ZodemDef;
   optional: boolean;
   nullable: boolean;
   meta: ZodemFieldMeta;
@@ -120,7 +215,7 @@ function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
       return wrap(unwrap(def.innerType, ctx));
     case "pipe": {
       const inner = unwrap(def.in, ctx);
-      const isPlainTransform = defOf(def.out)?.type === "transform";
+      const isPlainTransform = defOf(def.out).type === "transform";
       return wrap(inner, {
         warnings: isPlainTransform
           ? []
@@ -163,24 +258,22 @@ const BIGINT_FORMAT_TO_SCALAR: Record<string, ScalarName> = {
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
-function findFormatCheck(def: AnyDef, checkKind: string): string | undefined {
-  for (const check of def.checks ?? []) {
-    const cdef = defOf(check);
-    if (cdef?.check === checkKind && typeof cdef.format === "string") return cdef.format;
+function findFormatCheck(def: ZodemDef, checkKind: string): string | undefined {
+  for (const cdef of checkDefsOf(def)) {
+    if ("format" in cdef && cdef.check === checkKind && typeof cdef.format === "string") return cdef.format;
   }
   return undefined;
 }
 
-function scanNumericBounds(def: AnyDef): { min?: number; max?: number } {
+function scanNumericBounds(def: ZodemDef): { min?: number; max?: number } {
   let min: number | undefined;
   let max: number | undefined;
-  for (const check of def.checks ?? []) {
-    const cdef = defOf(check);
-    if (cdef?.check === "greater_than") {
+  for (const cdef of checkDefsOf(def)) {
+    if (cdef.check === "greater_than") {
       const v = Number(cdef.value) + (cdef.inclusive ? 0 : 1);
       min = min === undefined ? v : Math.max(min, v);
     }
-    if (cdef?.check === "less_than") {
+    if (cdef.check === "less_than") {
       const v = Number(cdef.value) - (cdef.inclusive ? 0 : 1);
       max = max === undefined ? v : Math.min(max, v);
     }
@@ -188,9 +281,14 @@ function scanNumericBounds(def: AnyDef): { min?: number; max?: number } {
   return { min, max };
 }
 
-function resolveNumberScalar(def: AnyDef, meta: ZodemFieldMeta, path: string, warnings: string[]): ScalarName {
+function resolveNumberScalar(
+  def: z.core.$ZodNumberDef | z.core.$ZodNumberFormatDef,
+  meta: ZodemFieldMeta,
+  path: string,
+  warnings: string[],
+): ScalarName {
   if (meta.proto) return meta.proto;
-  const format = (def.format as string | undefined) ?? findFormatCheck(def, "number_format");
+  const format = "format" in def ? def.format : findFormatCheck(def, "number_format");
   const scalar = format && NUMBER_FORMAT_TO_SCALAR[format] ? NUMBER_FORMAT_TO_SCALAR[format] : "double";
   if (scalar === "int32") {
     const { min, max } = scanNumericBounds(def);
@@ -203,9 +301,9 @@ function resolveNumberScalar(def: AnyDef, meta: ZodemFieldMeta, path: string, wa
   return scalar;
 }
 
-function resolveBigintScalar(def: AnyDef, meta: ZodemFieldMeta): ScalarName {
+function resolveBigintScalar(def: z.core.$ZodBigIntDef | z.core.$ZodBigIntFormatDef, meta: ZodemFieldMeta): ScalarName {
   if (meta.proto) return meta.proto;
-  const format = (def.format as string | undefined) ?? findFormatCheck(def, "bigint_format");
+  const format = "format" in def ? def.format : findFormatCheck(def, "bigint_format");
   return format && BIGINT_FORMAT_TO_SCALAR[format] ? BIGINT_FORMAT_TO_SCALAR[format] : "int64";
 }
 
@@ -232,8 +330,28 @@ const STRING_FORMAT_RULE: Record<string, string> = {
   ipv6: "ipv6",
 };
 
-function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: AnyDef): void {
-  const format = cdef.format as string | undefined;
+/**
+ * The union of "format"-carrying string check/def shapes this function reads
+ * fields off — spans both a schema's own compound def (e.g. `z.email()`'s
+ * `$ZodStringFormatDef`) and a chained check's def (e.g.
+ * `z.string().regex(...)`'s `$ZodCheckRegexDef`). A structural shape rather
+ * than one of Zod's own exported unions: discriminating on `.format` across
+ * a real union whose members don't all share the same extra fields defeats
+ * narrowing here (`$ZodCheckStringFormatDef`'s own `.format: string` stays
+ * reachable in every case, so `.prefix` etc. would stay inaccessible) —
+ * every real caller structurally satisfies this regardless, so passing one
+ * in needs no cast.
+ */
+type StringFormatLike = {
+  format: string;
+  pattern?: RegExp;
+  prefix?: string;
+  suffix?: string;
+  includes?: string;
+};
+
+function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: StringFormatLike): void {
+  const format = cdef.format;
   if (format === "regex" && cdef.pattern instanceof RegExp) {
     // .source drops the slashes/flags; protovalidate's `pattern` (RE2, no flags support) can only take the bare pattern text.
     rules.pattern = cdef.pattern.source;
@@ -255,12 +373,11 @@ function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: AnyDef): vo
   if (rule) rules[rule] = true;
 }
 
-function collectStringRules(def: AnyDef): Record<string, IRRuleValue> {
+function collectStringRules(def: ZodemDef): Record<string, IRRuleValue> {
   const rules: Record<string, IRRuleValue> = {};
-  if (typeof def.format === "string" && def.check === "string_format") applyStringFormat(rules, def);
-  for (const check of def.checks ?? []) {
-    const cdef = defOf(check);
-    switch (cdef?.check) {
+  if ("format" in def && def.check === "string_format") applyStringFormat(rules, def);
+  for (const cdef of checkDefsOf(def)) {
+    switch (cdef.check) {
       case "min_length":
         rules.min_len = Number(cdef.minimum);
         break;
@@ -284,17 +401,22 @@ type NumericBound = {
 };
 
 /** Tightest greater_than/less_than pair, preserving inclusive/exclusive (unlike scanNumericBounds above, which collapses to inclusive for the int32-range check). */
-function collectNumericBounds(def: AnyDef): { min?: NumericBound; max?: NumericBound } {
+function collectNumericBounds(def: ZodemDef): { min?: NumericBound; max?: NumericBound } {
   let min: NumericBound | undefined;
   let max: NumericBound | undefined;
-  for (const check of def.checks ?? []) {
-    const cdef = defOf(check);
-    if (cdef?.check === "greater_than") {
+  // `cdef.value` is typed `util.Numeric` (number | bigint | Date) since a
+  // greater_than/less_than check isn't tied to a particular schema kind at
+  // the type level — a Date value only occurs for a `z.date()` check, which
+  // never reaches this function in practice (collectNumericBounds is only
+  // called for a numeric/bigint field's own checks). Narrowed out here
+  // rather than asserted away, so that invariant stays checked, not assumed.
+  for (const cdef of checkDefsOf(def)) {
+    if (cdef.check === "greater_than" && typeof cdef.value !== "object") {
       const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
       if (!min || Number(candidate.value) > Number(min.value) || (Number(candidate.value) === Number(min.value) && !candidate.inclusive)) {
         min = candidate;
       }
-    } else if (cdef?.check === "less_than") {
+    } else if (cdef.check === "less_than" && typeof cdef.value !== "object") {
       const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
       if (!max || Number(candidate.value) < Number(max.value) || (Number(candidate.value) === Number(max.value) && !candidate.inclusive)) {
         max = candidate;
@@ -304,7 +426,7 @@ function collectNumericBounds(def: AnyDef): { min?: NumericBound; max?: NumericB
   return { min, max };
 }
 
-function collectNumericRules(def: AnyDef): Record<string, IRRuleValue> {
+function collectNumericRules(def: ZodemDef): Record<string, IRRuleValue> {
   const rules: Record<string, IRRuleValue> = {};
   const { min, max } = collectNumericBounds(def);
   if (min) rules[min.inclusive ? "gte" : "gt"] = min.value;
@@ -327,7 +449,7 @@ const NUMERIC_RULE_GROUPS = new Set<ScalarName>([
   "sfixed64",
 ]);
 
-function collectRules(def: AnyDef, group: ScalarName): IRRuleSet | undefined {
+function collectRules(def: ZodemDef, group: ScalarName): IRRuleSet | undefined {
   let rules: Record<string, IRRuleValue>;
   if (group === "string") {
     rules = collectStringRules(def);
@@ -343,13 +465,12 @@ function collectRules(def: AnyDef, group: ScalarName): IRRuleSet | undefined {
 // "length_equals" check kinds z.string() uses (arrays are measured by
 // `.length`, same as strings — "min_size"/"max_size" are for Set/Map-like
 // values measured by `.size`, which z.array() never produces).
-function collectArraySizeRules(def: AnyDef): Record<string, IRRuleValue> {
+function collectArraySizeRules(def: z.core.$ZodArrayDef): Record<string, IRRuleValue> {
   const rules: Record<string, IRRuleValue> = {};
-  for (const check of def.checks ?? []) {
-    const cdef = defOf(check);
-    if (cdef?.check === "min_length") rules.min_items = Number(cdef.minimum);
-    else if (cdef?.check === "max_length") rules.max_items = Number(cdef.maximum);
-    else if (cdef?.check === "length_equals") {
+  for (const cdef of checkDefsOf(def)) {
+    if (cdef.check === "min_length") rules.min_items = Number(cdef.minimum);
+    else if (cdef.check === "max_length") rules.max_items = Number(cdef.maximum);
+    else if (cdef.check === "length_equals") {
       rules.min_items = Number(cdef.length);
       rules.max_items = Number(cdef.length);
     }
@@ -464,7 +585,7 @@ function wrapCollectionIfNeeded(resolved: Finalized, currentMessage: IRMessage, 
   // short name rather than reusing `namePreference` at every level — reusing
   // it would collide with the inner wrapper's name and silently reuse the
   // wrong message.
-  const baseName = resolved.type.kind === "message" ? (resolved.type.fullName.split(".").pop() as string) : namePreference;
+  const baseName = resolved.type.kind === "message" ? resolved.type.fullName.split(".").pop()! : namePreference;
   const wrapperName = `${currentMessage.fullName}.${baseName}List`;
   let wrapper = currentMessage.nested.messages.find((m) => m.fullName === wrapperName);
   if (!wrapper) {
@@ -607,7 +728,7 @@ function resolveConcreteTypeInner(
       const fullName = `${currentMessage.fullName}.${namePreference}`;
       const upperName = upperSnake(namePreference);
       const values: IREnumValue[] = [];
-      for (const [entryKey, entryVal] of Object.entries(def.entries as Record<string, string | number>)) {
+      for (const [entryKey, entryVal] of Object.entries(def.entries)) {
         if (/^\d+$/.test(entryKey)) continue; // reverse-mapped numeric enum key
         void entryVal;
         values.push({ name: `${upperName}_${upperSnake(entryKey)}`, zodValue: entryKey });
@@ -618,8 +739,8 @@ function resolveConcreteTypeInner(
       return finalize({ kind: "enum", fullName }, { optional, nullable, allowNullableWrapper, path, warnings, ctx });
     }
     case "literal": {
-      const vals = def.values as unknown[];
-      if (vals?.length !== 1) {
+      const vals = def.values;
+      if (vals.length !== 1) {
         throw new UnsupportedTypeError(path, "z.literal() with multiple values is not supported; use z.enum() instead");
       }
       const v = vals[0];
@@ -709,12 +830,17 @@ export function walkObjectIntoMessage(
   return msg;
 }
 
+/** `z.discriminatedUnion()` and `z.union()` share `type: "union"` — the discriminator, not the type tag, is what tells them apart. */
+function isDiscriminatedUnionDef(def: ZodemDef): def is z.core.$ZodDiscriminatedUnionDef {
+  return def.type === "union" && "discriminator" in def && typeof def.discriminator === "string";
+}
+
 function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMessage, ctx: WalkerContext, path: string): void {
   const unwrapped = unwrap(fieldSchema, ctx);
   const namePreference = unwrapped.meta.name ?? pascalCase(key);
 
-  if (unwrapped.def.type === "union" && typeof unwrapped.def.discriminator === "string") {
-    processDiscriminatedUnion(key, unwrapped, currentMessage, ctx, path);
+  if (isDiscriminatedUnionDef(unwrapped.def)) {
+    processDiscriminatedUnion(key, unwrapped, unwrapped.def, currentMessage, ctx, path);
     return;
   }
 
@@ -734,12 +860,12 @@ function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMes
 function processDiscriminatedUnion(
   fieldKey: string,
   unwrapped: UnwrapResult,
+  def: z.core.$ZodDiscriminatedUnionDef,
   currentMessage: IRMessage,
   ctx: WalkerContext,
   path: string,
 ): void {
-  const def = unwrapped.def;
-  const discriminatorKey = def.discriminator as string;
+  const discriminatorKey = def.discriminator;
   const oneofName = camelToSnake(fieldKey);
   const memberFieldNames: string[] = [];
   const sharedWarnings = [...unwrapped.warnings];
@@ -747,7 +873,7 @@ function processDiscriminatedUnion(
     sharedWarnings.push(`${path}: null and absent both collapse to "no case set" for discriminated unions`);
   }
 
-  for (const option of def.options as AnySchema[]) {
+  for (const option of def.options) {
     const optionDef = defOf(option);
     if (optionDef.type !== "object") {
       throw new UnsupportedTypeError(path, "discriminated union branches must be z.object()");
@@ -757,14 +883,14 @@ function processDiscriminatedUnion(
       throw new UnsupportedTypeError(path, `branch is missing the discriminator key "${discriminatorKey}"`);
     }
     const discFieldDef = unwrap(discField, ctx).def;
-    const literalValues = discFieldDef.type === "literal" ? (discFieldDef.values as unknown[]) : undefined;
-    if (literalValues?.length !== 1 || typeof literalValues[0] !== "string") {
+    const literalValues = discFieldDef.type === "literal" ? discFieldDef.values : undefined;
+    const discValue = literalValues?.[0];
+    if (literalValues?.length !== 1 || typeof discValue !== "string") {
       throw new UnsupportedTypeError(
         path,
         `discriminator field "${discriminatorKey}" must be a single string z.literal() per branch`,
       );
     }
-    const discValue = literalValues[0] as string;
 
     const regMeta = zodemRegistry.get(option);
     let branchFullName: string;
@@ -772,7 +898,7 @@ function processDiscriminatedUnion(
       branchFullName = regMeta.fullName;
     } else {
       branchFullName = `${currentMessage.fullName}.${pascalCase(fieldKey)}${pascalCase(discValue)}`;
-      const branchShape: Record<string, AnySchema> = { ...(optionDef.shape as Record<string, AnySchema>) };
+      const branchShape: Record<string, AnySchema> = { ...optionDef.shape };
       delete branchShape[discriminatorKey];
       const nestedMsg = walkObjectIntoMessage(branchFullName, branchShape, ctx, `${path}.${discValue}`);
       currentMessage.nested.messages.push(nestedMsg);
