@@ -69,7 +69,9 @@ yet implemented anywhere in the tree.
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
-- [ ] A `LICENSE` file — repo currently has none
+- [x] A `LICENSE` file — MIT, added at the repo root; `"license": "MIT"` added to the root
+      workspace and the four `@zodem/*` package.json files (not the private `@example/*` demo
+      packages)
 
 ## Branding / publishing action items (handoff, for the human owner)
 
