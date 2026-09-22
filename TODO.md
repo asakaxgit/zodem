@@ -88,6 +88,13 @@ yet implemented anywhere in the tree.
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
+- [ ] Enable `nursery/noUnsafeTypeAssertion` in `biome.json` — bans `as X` type assertions
+      other than `as const`, matching the project's preference for `satisfies`/type predicates
+      over casting (see `packages/llm/src/meta.ts`'s `isPeelable()` for the pattern). Not
+      trivial to flip on repo-wide as-is: `packages/core/src/walker.ts` and
+      `packages/codec/src/codec.ts` have ~40 existing casts, most of them intentional
+      boundary-crossings (e.g. walker.ts's `_zod.def` access, explicitly documented as outside
+      the type system by design) that would each need a `// biome-ignore` with a reason.
 - [ ] A `LICENSE` file — repo currently has none
 
 ## Branding / publishing action items (handoff, for the human owner)

@@ -360,7 +360,7 @@ service UserService {
 ```ts
 import { z } from "zod";
 import { zodem } from "@zodem/core";
-import { toOpenAiTool, toAnthropicTool, toGeminiTool } from "@zodem/llm";
+import { toOpenAiTool, toAnthropicTool, toGeminiTool, toJsonSchema } from "@zodem/llm";
 
 export const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
   email: z.string().email(),
@@ -373,6 +373,23 @@ toAnthropicTool({ name: "createUser", description: "Create a new user", input: C
 //   email: { type: "string", format: "email" },
 //   display_name: { type: "string", minLength: 1, maxLength: 100 }
 // }, required: ["email", "display_name"], additionalProperties: false } }
+```
+
+ここまでは`input`のケース — リクエストスキーマをTool-callとしてラップする方です。少なくとも同じくらいよくあるのが`output`のケースで、こちらはTool-callとしてラップせず、レスポンススキーマに対して`toJsonSchema()`を直接呼び出します — 例えばOpenAIのStructured Outputs（`response_format`）向けや、Tool-callが返した内容を検証したいだけの場合です。
+
+```ts
+export const CreateUserResponse = zodem.message("acme.user.v1.CreateUserResponse", {
+  id: z.string(),
+  email: z.string().email(),
+});
+
+toJsonSchema(CreateUserResponse);
+// { type: "object", properties: {
+//   id: { type: "string" },
+//   email: { type: "string", format: "email" }
+// }, required: ["id", "email"], additionalProperties: false }
+
+CreateUserResponse.parse(JSON.parse(llmResponseJson)); // 返ってきた内容を検証する
 ```
 
 `.meta({ llm })`はLLM向けの形状専用の抜け道です — `false`はフィールドを省略し、`{ name }`はそれをリネームします — どちらの場合もワイヤー/proto の形状とは独立しています。zodemの`.meta({ proto, field, name, validate })` キーも、`.meta()`が読み取るのと同じ`z.globalRegistry`に乗っています。`@zodem/llm`は返す前にそれらを取り除くため、Tool スキーマに漏れることは一切ありません。

@@ -406,7 +406,7 @@ of reinventing a more limited version of it.
 ```ts
 import { z } from "zod";
 import { zodem } from "@zodem/core";
-import { toOpenAiTool, toAnthropicTool, toGeminiTool } from "@zodem/llm";
+import { toOpenAiTool, toAnthropicTool, toGeminiTool, toJsonSchema } from "@zodem/llm";
 
 export const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
   email: z.string().email(),
@@ -419,6 +419,26 @@ toAnthropicTool({ name: "createUser", description: "Create a new user", input: C
 //   email: { type: "string", format: "email" },
 //   display_name: { type: "string", minLength: 1, maxLength: 100 }
 // }, required: ["email", "display_name"], additionalProperties: false } }
+```
+
+That's the **input** case — wrapping a request schema as a tool-call. The **output** case is at
+least as common: calling `toJsonSchema()` directly on a response schema, e.g. for OpenAI's
+Structured Outputs (`response_format`), or just to validate what a tool call returned, with no
+tool-call wrapping involved.
+
+```ts
+export const CreateUserResponse = zodem.message("acme.user.v1.CreateUserResponse", {
+  id: z.string(),
+  email: z.string().email(),
+});
+
+toJsonSchema(CreateUserResponse);
+// { type: "object", properties: {
+//   id: { type: "string" },
+//   email: { type: "string", format: "email" }
+// }, required: ["id", "email"], additionalProperties: false }
+
+CreateUserResponse.parse(JSON.parse(llmResponseJson)); // validate what came back
 ```
 
 `.meta({ llm })` is the escape hatch for the LLM-facing shape specifically — `false` omits a

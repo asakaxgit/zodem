@@ -11,23 +11,31 @@ import type { ZodemFieldMeta } from "@zodem/core";
  * recurse into `z.lazy()` — apply `.meta({ llm })` as the outermost call
  * in the chain for those cases.
  */
-const PEELABLE = [
-  z.ZodOptional,
-  z.ZodNullable,
-  z.ZodNonOptional,
-  z.ZodDefault,
-  z.ZodPrefault,
-  z.ZodCatch,
-  z.ZodReadonly,
-] as const;
+type Peeled =
+  | z.ZodOptional<z.ZodType>
+  | z.ZodNullable<z.ZodType>
+  | z.ZodNonOptional<z.ZodType>
+  | z.ZodDefault<z.ZodType>
+  | z.ZodPrefault<z.ZodType>
+  | z.ZodCatch<z.ZodType>
+  | z.ZodReadonly<z.ZodType>;
+
+function isPeelable(schema: z.ZodType): schema is Peeled {
+  return (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodNonOptional ||
+    schema instanceof z.ZodDefault ||
+    schema instanceof z.ZodPrefault ||
+    schema instanceof z.ZodCatch ||
+    schema instanceof z.ZodReadonly
+  );
+}
 
 export function readZodemMeta(schema: z.ZodType): ZodemFieldMeta {
-  const own = (z.globalRegistry.get(schema as never) ?? {}) as ZodemFieldMeta;
-  for (const ctor of PEELABLE) {
-    if (schema instanceof ctor) {
-      const inner = (schema as unknown as { unwrap(): z.ZodType }).unwrap();
-      return { ...readZodemMeta(inner), ...own };
-    }
+  const own = (z.globalRegistry.get(schema) ?? {}) as ZodemFieldMeta;
+  if (isPeelable(schema)) {
+    return { ...readZodemMeta(schema.unwrap()), ...own };
   }
   return own;
 }
