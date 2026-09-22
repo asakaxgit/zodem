@@ -11,7 +11,7 @@ export type EmitFileInput = {
 };
 
 function shortName(fullName: string): string {
-  return fullName.split(".").pop() as string;
+  return fullName.split(".").pop()!;
 }
 
 function relativeName(fullName: string, packageName: string): string {
@@ -89,7 +89,7 @@ function emitMessage(msg: IRMessage, packageName: string, indentLevel: number, v
     lines.push(emitFieldLine(field, packageName, inner, validate));
   }
 
-  const oneofNames = [...new Set(msg.fields.filter((f) => f.oneof).map((f) => f.oneof as string))].sort();
+  const oneofNames = [...new Set(msg.fields.flatMap((f) => (f.oneof ? [f.oneof] : [])))].sort();
   for (const oneofName of oneofNames) {
     lines.push(`${inner}oneof ${oneofName} {`);
     const members = msg.fields

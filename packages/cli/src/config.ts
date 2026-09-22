@@ -23,15 +23,19 @@ export type LoadedConfig = {
   root: string;
 };
 
+function isZodemConfig(v: Partial<ZodemConfig> | undefined): v is ZodemConfig {
+  return !!v && Array.isArray(v.entry) && !!v.outDir && !!v.lockfile;
+}
+
 export async function loadConfig(cwd: string): Promise<LoadedConfig> {
   const configPath = resolve(cwd, "zodem.config.ts");
   if (!existsSync(configPath)) {
     throw new Error(`no zodem.config.ts found at ${configPath}`);
   }
   const jiti = createJiti(configPath, { interopDefault: true });
-  const mod = (await jiti.import(configPath)) as { default?: ZodemConfig } | ZodemConfig;
-  const config = "default" in mod && mod.default ? mod.default : (mod as ZodemConfig);
-  if (!config || !Array.isArray(config.entry) || !config.outDir || !config.lockfile) {
+  const mod = await jiti.import<Partial<ZodemConfig> & { default?: ZodemConfig }>(configPath);
+  const config = mod.default ?? mod;
+  if (!isZodemConfig(config)) {
     throw new Error(`${configPath} must export a default defineConfig({ entry, outDir, lockfile })`);
   }
   return { config, configPath, root: dirname(configPath) };

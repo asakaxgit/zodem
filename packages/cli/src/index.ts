@@ -46,22 +46,22 @@ async function runRename(args: string[]): Promise<void> {
   const cwd = process.cwd();
 
   if (kind === "field" && rest.length === 3) {
-    const [messageFullName, oldName, newName] = rest as [string, string, string];
-    const result = await renameField(cwd, messageFullName, oldName, newName);
+    const [messageFullName, oldName, newName] = rest;
+    const result = await renameField(cwd, messageFullName!, oldName!, newName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the field in your Zod schema, then run `zodem generate`.");
     return;
   }
   if (kind === "message" && rest.length === 2) {
-    const [oldFullName, newFullName] = rest as [string, string];
-    const result = await renameMessage(cwd, oldFullName, newFullName);
+    const [oldFullName, newFullName] = rest;
+    const result = await renameMessage(cwd, oldFullName!, newFullName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the message in your Zod schema (the zodem.message() full name), then run `zodem generate`.");
     return;
   }
   if (kind === "enum-value" && rest.length === 3) {
-    const [enumFullName, oldName, newName] = rest as [string, string, string];
-    const result = await renameEnumValue(cwd, enumFullName, oldName, newName);
+    const [enumFullName, oldName, newName] = rest;
+    const result = await renameEnumValue(cwd, enumFullName!, oldName!, newName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the value in your Zod enum, then run `zodem generate`.");
     console.warn("warning: this rename is wire-compatible but changes the proto JSON encoding for this value.");
