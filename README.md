@@ -556,4 +556,4 @@ and `buf build` in the same suite.
 
 ## License
 
-TBD.
+[MIT](LICENSE)

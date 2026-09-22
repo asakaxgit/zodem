@@ -479,4 +479,4 @@ pnpm lint
 
 ## ライセンス
 
-未定。
+[MIT](LICENSE)

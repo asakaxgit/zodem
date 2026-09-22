@@ -96,6 +96,9 @@ yet implemented anywhere in the tree.
       boundary-crossings (e.g. walker.ts's `_zod.def` access, explicitly documented as outside
       the type system by design) that would each need a `// biome-ignore` with a reason.
 - [ ] A `LICENSE` file — repo currently has none
+- [x] A `LICENSE` file — MIT, added at the repo root; `"license": "MIT"` added to the root
+      workspace and the four `@zodem/*` package.json files (not the private `@example/*` demo
+      packages)
 
 ## Branding / publishing action items (handoff, for the human owner)
 
