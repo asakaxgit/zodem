@@ -117,11 +117,20 @@ yet implemented anywhere in the tree.
 
 ## Branding / publishing action items (handoff, for the human owner)
 
+- [x] Automated npm publishing — `.github/workflows/release.yml`, Changesets-driven, using
+      npm's OIDC "trusted publishing" (no `NPM_TOKEN` in CI). All five `@zodem/*` packages
+      (`core`, `proto`, `codec`, `cli`, `llm` — the handoff's list above predates `llm`) are
+      no longer `"private": true`, and carry the `files`/`publishConfig`/`repository` metadata
+      publishing needs. See `RELEASING.md`.
 - [ ] Publish a placeholder `zodem` package on npm
-- [ ] Create the `@zodem` npm org; publish `@zodem/core`, `@zodem/proto`, `@zodem/codec`,
-      `@zodem/cli` (all currently `"private": true` at `0.1.0`)
+- [ ] Create the `@zodem` npm org, and do the one-time npm-side bootstrap the automated
+      workflow above depends on (claiming the org, the first manual publish, configuring a
+      Trusted Publisher per package) — needs an npmjs.com login, so still a human action;
+      the exact steps are in `RELEASING.md`
 - [ ] Create a dedicated GitHub org (handoff suggested `zodem-dev`) — the repo currently lives
-      at `github.com/asakaxgit/zodem`
+      at `github.com/asakaxgit/zodem`. Note: `release.yml`'s Trusted Publisher config
+      (org/repo/workflow filename) is tied to `asakaxgit/zodem`; moving repos means
+      reconfiguring it on npmjs.com for all five packages
 - [ ] Check/register domains (e.g. `zodem.dev`) — unchecked as of the handoff
 - [ ] Keep pairing the **"Zod'em"** wordmark with "Zod"/"TypeScript" in titles and descriptions,
       per the handoff's branding-risk note — "Zodem" (no apostrophe) collides in search with an

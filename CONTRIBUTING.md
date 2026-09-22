@@ -56,3 +56,7 @@ type-aware lint rules needing Biome's `types` domain explicitly enabled.
   in the PR description — `pnpm example:generate:check` will catch an
   *unintentional* diff, but it can't tell you whether an intentional one is
   correct.
+- If your change should ship a new version of a `@zodem/*` package, run
+  `pnpm changeset` and commit the file it generates — see
+  [RELEASING.md](RELEASING.md) for the full release flow (publishing is
+  automated; you never run `npm publish` yourself).
