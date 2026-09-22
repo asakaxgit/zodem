@@ -55,20 +55,47 @@ yet implemented anywhere in the tree.
 
 ## Not yet built
 
-- [ ] JSON Schema / LLM tool-call & structured-output emission from the same IR — this is the
-      "AI" destination in the README tagline; no code exists for it yet. Would be a new
-      emitter alongside `@zodem/proto` and `@zodem/codec`, consuming the same walker output.
+- [x] JSON Schema / LLM tool-call & structured-output emission — this is the "AI" destination
+      in the README tagline. Shipped as `@zodem/llm`, deliberately **not** built on the
+      walker/IR: that IR is protobuf-shaped (rejects `z.union()`/`z.tuple()`/`z.intersection()`/
+      `z.map()`/`z.set()`), and Zod 4.6.5 already ships a complete native `z.toJSONSchema()` that
+      has none of those restrictions — reusing the walker would have been strictly more limited
+      for no benefit. Built directly on `@zodem/core`'s existing `getRegisteredMessages()` /
+      `getRegisteredServices()` plus Zod's own schema + `toJSONSchema()`. Two small additive
+      changes to `@zodem/core`: `ZodemFieldMeta` gained `llm?: false | { name? }` (omit/rename a
+      field for the LLM-facing schema only) and `ZodemMethodDef` gained `description?: string`
+      (there was no slot for a tool-level description). Also strips zodem's own
+      `.meta({ proto, field, name, validate })` keys, which ride the same `z.globalRegistry`
+      `toJSONSchema()` reads from and which it otherwise merges into the output unfiltered
+      (confirmed against Zod's source) — this was the concrete bug the design had to solve, not
+      just a theoretical concern. `toOpenAiTool`/`toAnthropicTool`/`toGeminiTool` wrap a method's
+      schema per vendor; Gemini's `$ref`-free OpenAPI-3.0-subset schema throws a clear error for
+      genuinely self-referential (`z.lazy()`) input rather than emit broken output, since that
+      can't be represented at all, not just inconveniently. Considered depending on the
+      third-party `llm-abi` for vendor lowering — passed on it (created 3 weeks prior, v0.5.2,
+      1 star, single maintainer) in favor of a small first-party lowering layer.
 - [ ] `zodem-form` (naming TBD — `@zodem/form` would match the existing `@zodem/{proto,codec,cli}`
-      scoping convention better) — generate a form schema (fields + constraints) from the same
-      walker/IR. The Phase 5 protovalidate rule collection (`IRField.rules`: min/max length,
-      pattern, required, email/uuid/url/ipv4/ipv6 format, numeric bounds, array size, …) maps
-      almost directly onto form field constraints, so this is mostly a new emitter, not new
-      walker work. Open questions: framework-agnostic output vs. optional framework bindings
-      (mirroring how `@zodem/codec` stays runtime-agnostic while the fullstack example wires up
-      React); package scope/naming.
+      scoping convention better) — generate a form schema (fields + constraints). Deferred; the
+      same "build on the real Zod schema, not the protobuf-shaped walker/IR" reasoning behind
+      `@zodem/llm` likely applies here too (forms don't need field-number stability either, and
+      JSON Schema is already the native input format for form-rendering libraries like
+      react-jsonschema-form), but the actual output shape — field list vs. JSON-Schema-plus-
+      UI-schema, widget-hint vocabulary — hasn't been explored. Needs its own planning pass,
+      likely reusing `@zodem/llm`'s `toJsonSchema`/meta-stripping machinery rather than
+      duplicating it. Open questions from the original handoff: framework-agnostic output vs.
+      optional framework bindings (mirroring how `@zodem/codec` stays runtime-agnostic while the
+      fullstack example wires up React); package scope/naming.
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
+- [ ] Enable `nursery/noUnsafeTypeAssertion` in `biome.json` — bans `as X` type assertions
+      other than `as const`, matching the project's preference for `satisfies`/type predicates
+      over casting (see `packages/llm/src/meta.ts`'s `isPeelable()` for the pattern). Not
+      trivial to flip on repo-wide as-is: `packages/core/src/walker.ts` and
+      `packages/codec/src/codec.ts` have ~40 existing casts, most of them intentional
+      boundary-crossings (e.g. walker.ts's `_zod.def` access, explicitly documented as outside
+      the type system by design) that would each need a `// biome-ignore` with a reason.
+- [ ] A `LICENSE` file — repo currently has none
 - [x] A `LICENSE` file — MIT, added at the repo root; `"license": "MIT"` added to the root
       workspace and the four `@zodem/*` package.json files (not the private `@example/*` demo
       packages)
