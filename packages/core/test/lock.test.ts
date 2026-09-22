@@ -18,14 +18,14 @@ import {
   PinnedNumberMismatchError,
   RenameError,
 } from "../src/errors.js";
-import type { IREnum, IRMessage } from "../src/ir.js";
+import type { IREnum, IRMessage, ScalarName } from "../src/ir.js";
 
 function msg(fullName: string, fields: IRMessage["fields"]): IRMessage {
   return { fullName, fields, oneofs: [], nested: { messages: [], enums: [] }, reserved: [] };
 }
 
-function field(name: string, typeName: string = "string"): IRMessage["fields"][number] {
-  return { name, jsonName: name, type: { kind: "scalar", name: typeName as never }, label: "singular", warnings: [] };
+function field(name: string, typeName: ScalarName = "string"): IRMessage["fields"][number] {
+  return { name, jsonName: name, type: { kind: "scalar", name: typeName }, label: "singular", warnings: [] };
 }
 
 describe("syncMessage: allocation", () => {
@@ -256,7 +256,7 @@ describe("validateLock", () => {
   });
 
   it("rejects an unsupported version", () => {
-    expect(() => validateLock({ version: 2, messages: {}, enums: {} } as never)).toThrow(LockfileValidationError);
+    expect(() => validateLock({ version: 2, messages: {}, enums: {} })).toThrow(LockfileValidationError);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { IREnum, IRField, IRLabel, IRMessage, IRReserved, IRType } from "./ir.js";
+import type { IREnum, IRLabel, IRMessage, IRReserved, IRType } from "./ir.js";
 import {
   BreakingChangeError,
   LockfileValidationError,
@@ -52,17 +52,17 @@ export function parseLock(raw: string, sourceForErrors = "<lockfile>"): LockFile
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new LockfileValidationError(`${sourceForErrors} is not valid JSON (${(error as Error).message})`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new LockfileValidationError(`${sourceForErrors} is not valid JSON (${message})`);
   }
-  const lock = parsed as LockFile;
-  validateLock(lock);
-  return lock;
+  validateLock(parsed);
+  return parsed;
 }
 
 function sortRecord<T>(record: Record<string, T>, map: (value: T) => T): Record<string, T> {
   const out: Record<string, T> = {};
   for (const key of Object.keys(record).sort()) {
-    out[key] = map(record[key] as T);
+    out[key] = map(record[key]!);
   }
   return out;
 }
@@ -179,7 +179,7 @@ export function syncMessage(ir: IRMessage, lock: LockFile, opts: SyncOptions): S
   delete entry.removed;
 
   const seen = new Set<string>();
-  for (const field of ir.fields as IRField[]) {
+  for (const field of ir.fields) {
     seen.add(field.name);
     const key = typeKey(field.type);
     const existing = entry.fields[field.name];
@@ -371,17 +371,27 @@ function validateEnumNumbers(
   }
 }
 
-export function validateLock(lock: LockFile): void {
+/**
+ * `unknown`, not `LockFile`: this function's whole job is turning an
+ * unvalidated value (freshly `JSON.parse()`d, in `parseLock`'s case) into a
+ * trusted `LockFile` — asserting the input's type up front would just be
+ * restating what this function is here to prove. Every field this function
+ * itself reads off `candidate` is guarded before use; downstream code sees
+ * a real `LockFile` only once every check below has passed.
+ */
+export function validateLock(lock: unknown): asserts lock is LockFile {
   if (!lock || typeof lock !== "object") {
     throw new LockfileValidationError("root is not an object");
   }
-  if (lock.version !== 1) {
-    throw new LockfileValidationError(`unsupported lockfile version ${JSON.stringify(lock.version)}`);
+  // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one crossing this assertion function makes, from the object check above to the shape it's about to validate field-by-field — see the doc comment above.
+  const candidate = lock as LockFile;
+  if (candidate.version !== 1) {
+    throw new LockfileValidationError(`unsupported lockfile version ${JSON.stringify(candidate.version)}`);
   }
-  for (const [name, entry] of Object.entries(lock.messages ?? {})) {
+  for (const [name, entry] of Object.entries(candidate.messages ?? {})) {
     validateFieldNumbers(name, entry.fields, entry.reserved, entry.nextField);
   }
-  for (const [name, entry] of Object.entries(lock.enums ?? {})) {
+  for (const [name, entry] of Object.entries(candidate.enums ?? {})) {
     validateEnumNumbers(name, entry.values, entry.reserved, entry.nextValue);
   }
 }
@@ -426,7 +436,7 @@ export function renameField(lock: LockFile, messageFullName: string, oldName: st
       `"${newName}" is a reserved name on "${messageFullName}" (a previously removed field) and can't be reused.`,
     );
   }
-  const field = entry.fields[oldName] as LockFieldEntry;
+  const field = entry.fields[oldName]!; // proven present by the `in` check above
   delete entry.fields[oldName];
   entry.fields[newName] = field;
 }
@@ -488,7 +498,7 @@ export function renameEnumValue(lock: LockFile, enumFullName: string, oldName: s
       `"${newName}" is a reserved name on "${enumFullName}" (a previously removed value) and can't be reused.`,
     );
   }
-  const number = entry.values[oldName] as number;
+  const number = entry.values[oldName]!; // proven present by the `in` check above
   delete entry.values[oldName];
   entry.values[newName] = number;
 }
