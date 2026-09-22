@@ -7,33 +7,33 @@ import {
   PinnedNumberMismatchError,
 } from "./errors.js";
 
-export interface LockFieldEntry {
+export type LockFieldEntry = {
   number: number;
   /** canonical type key, see `typeKey()` */
   type: string;
   label: IRLabel;
-}
+};
 
-export interface LockMessageEntry {
+export type LockMessageEntry = {
   nextField: number;
   fields: Record<string, LockFieldEntry>;
   reserved: IRReserved[];
   /** message existed in a prior generate but is absent from the current schema */
   removed?: boolean;
-}
+};
 
-export interface LockEnumEntry {
+export type LockEnumEntry = {
   nextValue: number;
   values: Record<string, number>;
   reserved: IRReserved[];
   removed?: boolean;
-}
+};
 
-export interface LockFile {
+export type LockFile = {
   version: 1;
   messages: Record<string, LockMessageEntry>;
   enums: Record<string, LockEnumEntry>;
-}
+};
 
 const RESERVED_RANGE_START = 19000;
 const RESERVED_RANGE_END = 19999;
@@ -159,13 +159,13 @@ function assertNotReservedOrUsed(
   }
 }
 
-export interface SyncOptions {
+export type SyncOptions = {
   allowBreaking: boolean;
-}
+};
 
-export interface SyncResult {
+export type SyncResult = {
   warnings: string[];
-}
+};
 
 /** Mutates `ir.fields[].number` and `ir.reserved` in place from `lock`. */
 export function syncMessage(ir: IRMessage, lock: LockFile, opts: SyncOptions): SyncResult {

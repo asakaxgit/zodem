@@ -16,25 +16,25 @@ import { loadLock, writeLock } from "@zodem/core/node";
 import { computeFileImports, emitProto, outputPathFor } from "@zodem/proto";
 import { loadConfig } from "./config.js";
 
-export interface GenerateOptions {
+export type GenerateOptions = {
   cwd: string;
   check: boolean;
   allowBreaking: boolean;
-}
+};
 
-export interface GeneratedFile {
+export type GeneratedFile = {
   path: string;
   content: string;
-}
+};
 
-export interface GenerateResult {
+export type GenerateResult = {
   /** true if any on-disk .proto output or the lockfile would change (or did change, outside --check) */
   changed: boolean;
   warnings: string[];
   files: GeneratedFile[];
   lockPath: string;
   lockContent: string;
-}
+};
 
 function packageOf(fullName: string): string {
   const parts = fullName.split(".");

@@ -8,7 +8,7 @@ import type { IREnum, IRField, IRMessage, IROneof, IRType, WellKnownTypeName } f
  * protobuf-es code, so it works for both requests (encode) and responses
  * (decode) on either side of a Connect call.
  */
-export interface Codec<T = Record<string, unknown>> {
+export type Codec<T = Record<string, unknown>> = {
   encode(value: T): Record<string, unknown>;
   /**
    * `unknown`, not `Record<string, unknown>`: the real input is a
@@ -19,18 +19,18 @@ export interface Codec<T = Record<string, unknown>> {
    * its static type, so `unknown` is both accurate and cast-free for callers.
    */
   decode(message: unknown): T;
-}
+};
 
-interface CompiledMessage {
+type CompiledMessage = {
   encode(value: Record<string, unknown>): Record<string, unknown>;
   decode(message: Record<string, unknown>): Record<string, unknown>;
-}
+};
 
-interface CompileCtx {
+type CompileCtx = {
   allMessages: ReadonlyMap<string, IRMessage>;
   allEnums: ReadonlyMap<string, IREnum>;
   cache: Map<string, CompiledMessage>;
-}
+};
 
 const identity = (v: unknown): unknown => v;
 
@@ -158,13 +158,13 @@ function compileScalarLike(
   }
 }
 
-interface FieldPlan {
+type FieldPlan = {
   zodKey: string;
   protoKey: string;
   nullable: boolean;
   encode: (v: unknown) => unknown;
   decode: (v: unknown) => unknown;
-}
+};
 
 function compileField(f: IRField, ctx: CompileCtx): FieldPlan {
   const protoKey = snakeToCamel(f.name);
@@ -183,12 +183,12 @@ function compileField(f: IRField, ctx: CompileCtx): FieldPlan {
   return { zodKey, protoKey, nullable: f.nullable ?? false, encode: single.encode, decode: single.decode };
 }
 
-interface OneofPlan {
+type OneofPlan = {
   zodFieldKey: string;
   protoKey: string;
   encode: (value: Record<string, unknown>) => { case: string; value: unknown };
   decode: (adt: { case?: string; value?: unknown }) => Record<string, unknown> | undefined;
-}
+};
 
 function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofPlan {
   const protoKey = snakeToCamel(o.name);

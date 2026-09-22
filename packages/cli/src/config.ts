@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createJiti } from "jiti";
 
-export interface ZodemConfig {
+export type ZodemConfig = {
   /** glob patterns (relative to the config file) for modules that call zodem.message() / zodem.service() */
   entry: string[];
   /** directory (relative to the config file) generated .proto files are written under */
@@ -11,17 +11,17 @@ export interface ZodemConfig {
   lockfile: string;
   /** emit protovalidate (buf.validate) field options from Zod checks. Default false — existing output stays byte-identical unless opted in. */
   validate?: boolean;
-}
+};
 
 export function defineConfig(config: ZodemConfig): ZodemConfig {
   return config;
 }
 
-export interface LoadedConfig {
+export type LoadedConfig = {
   config: ZodemConfig;
   configPath: string;
   root: string;
-}
+};
 
 export async function loadConfig(cwd: string): Promise<LoadedConfig> {
   const configPath = resolve(cwd, "zodem.config.ts");

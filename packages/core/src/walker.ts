@@ -43,11 +43,11 @@ export class WalkerContext {
   }
 }
 
-export interface WalkResult {
+export type WalkResult = {
   messages: IRMessage[];
   services: IRService[];
   imports: Set<string>;
-}
+};
 
 export function walkRegistry(): WalkResult {
   const ctx = new WalkerContext();
@@ -67,7 +67,7 @@ export function walkRegistry(): WalkResult {
 // Unwrap: peel presence/refinement wrappers, accumulating meta as we go.
 // ---------------------------------------------------------------------------
 
-interface UnwrapResult {
+type UnwrapResult = {
   schema: AnySchema;
   def: AnyDef;
   optional: boolean;
@@ -83,7 +83,7 @@ interface UnwrapResult {
    * inside the nested object-shape walk, not during unwrap.
    */
   lazyChain: AnySchema[];
-}
+};
 
 function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
   const def = defOf(schema);
@@ -271,10 +271,10 @@ function collectStringRules(def: AnyDef): Record<string, IRRuleValue> {
   return rules;
 }
 
-interface NumericBound {
+type NumericBound = {
   value: number | bigint;
   inclusive: boolean;
-}
+};
 
 /** Tightest greater_than/less_than pair, preserving inclusive/exclusive (unlike scanNumericBounds above, which collapses to inclusive for the int32-range check). */
 function collectNumericBounds(def: AnyDef): { min?: NumericBound; max?: NumericBound } {
@@ -366,14 +366,14 @@ const WRAPPER_FOR_SCALAR: Partial<Record<ScalarName, WellKnownTypeName>> = {
   bytes: "google.protobuf.BytesValue",
 };
 
-interface Finalized {
+type Finalized = {
   type: IRType;
   label: IRLabel;
   /** true if `.nullable()` applied at this field (regardless of how it was represented) */
   nullable: boolean;
   warnings: string[];
   rules?: IRRuleSet;
-}
+};
 
 function finalize(
   baseType: IRType,

@@ -4,10 +4,10 @@ import { readZodemMeta } from "./meta.js";
 /** Plain JSON Schema document — deliberately untyped beyond this (see `packages/llm/src/schema.ts`'s module comment for why). */
 export type JsonSchema = Record<string, unknown>;
 
-export interface ToJsonSchemaOptions {
+export type ToJsonSchemaOptions = {
   /** Which JSON Schema dialect to emit. Default `"draft-2020-12"`. */
   target?: "draft-2020-12" | "draft-07" | "draft-04" | "openapi-3.0";
-}
+};
 
 // The four keys ZodemFieldMeta can carry (packages/core/src/registry.ts).
 // None of these are standard JSON Schema keywords, so any occurrence in the

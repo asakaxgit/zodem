@@ -8,7 +8,7 @@ import { DuplicateRegistrationError, ZodemError } from "./errors.js";
  * survive being written anywhere in a schema, including by users who never
  * import this package directly (e.g. a shared validation library).
  */
-export interface ZodemFieldMeta {
+export type ZodemFieldMeta = {
   /** Pin the wire field number. Escape hatch for importing an existing .proto contract. */
   field?: number;
   /** Override the inferred scalar wire type, e.g. "sint32", "fixed64". */
@@ -19,7 +19,7 @@ export interface ZodemFieldMeta {
   validate?: false;
   /** Escape hatch for @zodem/llm's JSON Schema/tool-call emission: `false` omits this field from the LLM-facing schema, `{ name }` renames it there — independent of the wire/proto shape either way. */
   llm?: false | { name?: string };
-}
+};
 
 export type ZodemMeta =
   | { kind: "message"; fullName: string; package: string }
@@ -76,10 +76,10 @@ export function message<Shape extends z.core.$ZodShape>(
   return schema;
 }
 
-export interface RegisteredMessage {
+export type RegisteredMessage = {
   fullName: string;
   schema: z.ZodType;
-}
+};
 
 export function getRegisteredMessages(): RegisteredMessage[] {
   return [...messagesByName.entries()].map(([fullName, schema]) => ({ fullName, schema }));
@@ -92,23 +92,23 @@ export function bytes(): z.ZodType<Uint8Array, Uint8Array> {
   return schema;
 }
 
-export interface ZodemMethodDef<
+export type ZodemMethodDef<
   In extends z.ZodType = z.ZodType,
   Out extends z.ZodType = z.ZodType,
-> {
+> = {
   input: In;
   output: Out;
   /** Which side streams. Omit for unary. */
   stream?: "server" | "client" | "bidi";
   /** Human-readable description of this method — used as the tool `description` by @zodem/llm; Zod's `.describe()` only covers fields, not the method itself. */
   description?: string;
-}
+};
 
-export interface ZodemServiceDef {
+export type ZodemServiceDef = {
   fullName: string;
   package: string;
   methods: Record<string, ZodemMethodDef>;
-}
+};
 
 const serviceRegistry = new Map<string, ZodemServiceDef>();
 

@@ -2,28 +2,28 @@ import type { z } from "zod";
 import { getRegisteredServices, ZodemError } from "@zodem/core";
 import { toJsonSchema, type JsonSchema } from "./schema.js";
 
-export interface ToolInput {
+export type ToolInput = {
   name: string;
   description?: string;
   input: z.ZodType;
-}
+};
 
-export interface OpenAiTool {
+export type OpenAiTool = {
   type: "function";
   function: { name: string; description?: string; parameters: JsonSchema };
-}
+};
 
-export interface AnthropicTool {
+export type AnthropicTool = {
   name: string;
   description?: string;
   input_schema: JsonSchema;
-}
+};
 
-export interface GeminiTool {
+export type GeminiTool = {
   name: string;
   description?: string;
   parameters: JsonSchema;
-}
+};
 
 /** Recursively forces `additionalProperties: false` on every object node — best-effort toward OpenAI's Structured Outputs strict mode. Not a full strict-mode guarantee: strict mode also requires every property to be listed in `required` (true optionals must be modeled as nullable unions instead), which this does not attempt. */
 function forceNoAdditionalProperties(node: unknown): unknown {

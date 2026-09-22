@@ -8,10 +8,10 @@ import {
 import { loadLock, writeLock } from "@zodem/core/node";
 import { loadConfig } from "./config.js";
 
-export interface RenameResult {
+export type RenameResult = {
   lockPath: string;
   summary: string;
-}
+};
 
 async function withLock(cwd: string, mutate: (lock: LockFile) => string): Promise<RenameResult> {
   const { config, root } = await loadConfig(cwd);

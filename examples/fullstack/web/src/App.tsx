@@ -10,7 +10,7 @@ const client = createClient(proto.UserService, transport);
 const requestCodec = codecs.get("acme.user.v1.CreateUserRequest")!;
 const userCodec = codecs.get("acme.user.v1.User")!;
 
-interface FormState {
+type FormState = {
   email: string;
   displayName: string;
   age: string;
@@ -18,7 +18,7 @@ interface FormState {
   nickname: string;
   city: string;
   country: string;
-}
+};
 
 const initialForm: FormState = {
   email: "",

@@ -1,14 +1,14 @@
 import type { IREnum, IRField, IRMessage, IRReserved, IRRuleSet, IRRuleValue, IRService, IRType, WellKnownTypeName } from "@zodem/core";
 import { upperSnake } from "@zodem/core";
 
-export interface EmitFileInput {
+export type EmitFileInput = {
   package: string;
   messages: IRMessage[];
   services: IRService[];
   imports: Iterable<string>;
   /** Render protovalidate (buf.validate) field options from IRField.rules. Default false — existing output stays byte-identical unless opted in. */
   validate?: boolean;
-}
+};
 
 function shortName(fullName: string): string {
   return fullName.split(".").pop() as string;
