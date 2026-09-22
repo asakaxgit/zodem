@@ -1,19 +1,23 @@
-export type ScalarName =
-  | "double"
-  | "float"
-  | "int32"
-  | "int64"
-  | "uint32"
-  | "uint64"
-  | "sint32"
-  | "sint64"
-  | "fixed32"
-  | "fixed64"
-  | "sfixed32"
-  | "sfixed64"
-  | "bool"
-  | "string"
-  | "bytes";
+/** Every protobuf scalar name zodem can emit — the runtime source of truth `isScalarName()` checks a `.meta({ proto })` override against. */
+export const SCALAR_NAMES = [
+  "double",
+  "float",
+  "int32",
+  "int64",
+  "uint32",
+  "uint64",
+  "sint32",
+  "sint64",
+  "fixed32",
+  "fixed64",
+  "sfixed32",
+  "sfixed64",
+  "bool",
+  "string",
+  "bytes",
+] as const;
+
+export type ScalarName = (typeof SCALAR_NAMES)[number];
 
 export type WellKnownTypeName =
   | "google.protobuf.Timestamp"
@@ -40,7 +44,7 @@ export type IRLabel = "singular" | "optional" | "repeated";
 
 export type IRRuleValue = string | number | bigint | boolean;
 
-export interface IRRuleSet {
+export type IRRuleSet = {
   /** protovalidate rule group matching the wire type: "string" | "int32" | … | "repeated" | "map" */
   group: string;
   /** rule name -> literal, e.g. { min_len: 1, email: true }; insertion order is emission order */
@@ -50,9 +54,9 @@ export interface IRRuleSet {
   /** map key/value rules */
   keys?: IRRuleSet;
   values?: IRRuleSet;
-}
+};
 
-export interface IRField {
+export type IRField = {
   /** proto field name (snake_case) */
   name: string;
   /** original Zod object key */
@@ -75,9 +79,9 @@ export interface IRField {
    */
   rules?: IRRuleSet;
   warnings: string[];
-}
+};
 
-export interface IROneof {
+export type IROneof = {
   name: string;
   /** the Zod object key on the parent that holds the discriminated union */
   zodFieldKey: string;
@@ -85,14 +89,14 @@ export interface IROneof {
   discriminatorKey: string;
   /** proto field names of the member fields, in declaration order */
   fields: string[];
-}
+};
 
-export interface IRReserved {
+export type IRReserved = {
   number: number;
   name: string;
-}
+};
 
-export interface IRMessage {
+export type IRMessage = {
   fullName: string;
   fields: IRField[];
   oneofs: IROneof[];
@@ -108,39 +112,39 @@ export interface IRMessage {
    * ordinary user-defined message.
    */
   isListWrapper?: boolean;
-}
+};
 
-export interface IREnumValue {
+export type IREnumValue = {
   name: string;
   zodValue: string;
   number?: number;
-}
+};
 
-export interface IREnum {
+export type IREnum = {
   fullName: string;
   values: IREnumValue[];
   reserved: IRReserved[];
-}
+};
 
-export interface IRMethod {
+export type IRMethod = {
   name: string;
   input: string;
   output: string;
   clientStreaming: boolean;
   serverStreaming: boolean;
   warnings: string[];
-}
+};
 
-export interface IRService {
+export type IRService = {
   fullName: string;
   methods: IRMethod[];
-}
+};
 
-export interface IRFile {
+export type IRFile = {
   package: string;
   path: string;
   imports: string[];
   messages: IRMessage[];
   enums: IREnum[];
   services: IRService[];
-}
+};

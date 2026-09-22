@@ -1,4 +1,4 @@
-import type { IREnum, IRField, IRLabel, IRMessage, IRReserved, IRType } from "./ir.js";
+import type { IREnum, IRLabel, IRMessage, IRReserved, IRType } from "./ir.js";
 import {
   BreakingChangeError,
   LockfileValidationError,
@@ -7,67 +7,67 @@ import {
   PinnedNumberMismatchError,
 } from "./errors.js";
 
-export interface LockFieldEntry {
+export type LockFieldEntry = {
   number: number;
   /** canonical type key, see `typeKey()` */
   type: string;
   label: IRLabel;
-}
+};
 
-export interface LockMessageEntry {
+export type LockMessageEntry = {
   nextField: number;
   fields: Record<string, LockFieldEntry>;
   reserved: IRReserved[];
   /** message existed in a prior generate but is absent from the current schema */
   removed?: boolean;
-}
+};
 
-export interface LockEnumEntry {
+export type LockEnumEntry = {
   nextValue: number;
   values: Record<string, number>;
   reserved: IRReserved[];
   removed?: boolean;
-}
+};
 
-export interface LockFile {
+export type LockFile = {
   version: 1;
   messages: Record<string, LockMessageEntry>;
   enums: Record<string, LockEnumEntry>;
-}
+};
 
 const RESERVED_RANGE_START = 19000;
 const RESERVED_RANGE_END = 19999;
 
-export function emptyLock(): LockFile {
+export const emptyLock = (): LockFile => {
   return { version: 1, messages: {}, enums: {} };
-}
+};
 
-export function serializeLock(lock: LockFile): string {
+export const serializeLock = (lock: LockFile): string => {
   return `${JSON.stringify(sortLock(lock), null, 2)}\n`;
-}
+};
 
 /** Parses and validates lockfile JSON already read from disk (or anywhere else). Node-only I/O lives in lock-io.ts. */
-export function parseLock(raw: string, sourceForErrors = "<lockfile>"): LockFile {
+export const parseLock = (raw: string, sourceForErrors = "<lockfile>"): LockFile => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new LockfileValidationError(`${sourceForErrors} is not valid JSON (${(error as Error).message})`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new LockfileValidationError(`${sourceForErrors} is not valid JSON (${message})`);
   }
-  const lock = parsed as LockFile;
-  validateLock(lock);
-  return lock;
-}
+  validateLock(parsed);
+  return parsed;
+};
 
-function sortRecord<T>(record: Record<string, T>, map: (value: T) => T): Record<string, T> {
+const sortRecord = <T>(record: Record<string, T>, map: (value: T) => T): Record<string, T> => {
   const out: Record<string, T> = {};
   for (const key of Object.keys(record).sort()) {
-    out[key] = map(record[key] as T);
+    out[key] = map(record[key]!);
   }
   return out;
-}
+};
 
-function sortLock(lock: LockFile): LockFile {
+const sortLock = (lock: LockFile): LockFile => {
   return {
     version: lock.version,
     messages: sortRecord(lock.messages, (m) => ({
@@ -83,14 +83,14 @@ function sortLock(lock: LockFile): LockFile {
       ...(e.removed ? { removed: true as const } : {}),
     })),
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Type keys: canonical string form of an IRType, used for storage and for
 // wire-compatibility comparisons.
 // ---------------------------------------------------------------------------
 
-export function typeKey(type: IRType): string {
+export const typeKey = (type: IRType): string => {
   switch (type.kind) {
     case "scalar":
       return type.name;
@@ -103,11 +103,11 @@ export function typeKey(type: IRType): string {
     case "map":
       return `map<${type.key},${typeKey(type.value)}>`;
   }
-}
+};
 
 const INT_WIDEN: Record<string, string> = { int32: "int64", uint32: "uint64" };
 
-export function isWireCompatible(from: string, to: string): { ok: boolean; warning?: string } {
+export const isWireCompatible = (from: string, to: string): { ok: boolean; warning?: string } => {
   if (from === to) return { ok: true };
   if (INT_WIDEN[from] === to) return { ok: true };
   if (INT_WIDEN[to] === from) return { ok: true, warning: `narrowing ${from} -> ${to}` };
@@ -118,13 +118,13 @@ export function isWireCompatible(from: string, to: string): { ok: boolean; warni
   if (toEnum && from === "int32") return { ok: true, warning: `int32 -> enum` };
 
   return { ok: false };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Sync: assign/reconcile field & enum-value numbers against the lockfile.
 // ---------------------------------------------------------------------------
 
-function checkRange(ownerName: string, number: number): void {
+const checkRange = (ownerName: string, number: number): void => {
   if (number < 1) {
     throw new LockfileValidationError(`${ownerName} has invalid number ${number}`);
   }
@@ -133,21 +133,21 @@ function checkRange(ownerName: string, number: number): void {
       `${ownerName} uses number ${number}, which is in the protobuf-reserved range ${RESERVED_RANGE_START}-${RESERVED_RANGE_END}`,
     );
   }
-}
+};
 
-function allocate(entry: LockMessageEntry): number {
+const allocate = (entry: LockMessageEntry): number => {
   let n = entry.nextField;
   if (n >= RESERVED_RANGE_START && n <= RESERVED_RANGE_END) n = RESERVED_RANGE_END + 1;
   entry.nextField = n + 1;
   return n;
-}
+};
 
-function assertNotReservedOrUsed(
+const assertNotReservedOrUsed = (
   ownerName: string,
   entry: LockMessageEntry,
   number: number,
   fieldName: string,
-): void {
+): void => {
   if (entry.reserved.some((r) => r.number === number)) {
     throw new PinnedNumberMismatchError(ownerName, fieldName, number, "reserved");
   }
@@ -157,18 +157,18 @@ function assertNotReservedOrUsed(
       `${ownerName}.${fieldName} is pinned to field ${number}, but field ${number} is already used by "${conflict[0]}". Field numbers must be unique.`,
     );
   }
-}
+};
 
-export interface SyncOptions {
+export type SyncOptions = {
   allowBreaking: boolean;
-}
+};
 
-export interface SyncResult {
+export type SyncResult = {
   warnings: string[];
-}
+};
 
 /** Mutates `ir.fields[].number` and `ir.reserved` in place from `lock`. */
-export function syncMessage(ir: IRMessage, lock: LockFile, opts: SyncOptions): SyncResult {
+export const syncMessage = (ir: IRMessage, lock: LockFile, opts: SyncOptions): SyncResult => {
   const warnings: string[] = [];
   const entry: LockMessageEntry = lock.messages[ir.fullName] ?? {
     nextField: 1,
@@ -179,7 +179,7 @@ export function syncMessage(ir: IRMessage, lock: LockFile, opts: SyncOptions): S
   delete entry.removed;
 
   const seen = new Set<string>();
-  for (const field of ir.fields as IRField[]) {
+  for (const field of ir.fields) {
     seen.add(field.name);
     const key = typeKey(field.type);
     const existing = entry.fields[field.name];
@@ -223,17 +223,17 @@ export function syncMessage(ir: IRMessage, lock: LockFile, opts: SyncOptions): S
   }
   ir.reserved = entry.reserved;
   return { warnings };
-}
+};
 
-function allocateEnum(entry: LockEnumEntry): number {
+const allocateEnum = (entry: LockEnumEntry): number => {
   let n = entry.nextValue;
   if (n >= RESERVED_RANGE_START && n <= RESERVED_RANGE_END) n = RESERVED_RANGE_END + 1;
   entry.nextValue = n + 1;
   return n;
-}
+};
 
 /** Mutates `ir.values[].number` and `ir.reserved` in place from `lock`. Value `0` (UNSPECIFIED) is implicit and never stored. */
-export function syncEnum(ir: IREnum, lock: LockFile): SyncResult {
+export const syncEnum = (ir: IREnum, lock: LockFile): SyncResult => {
   const warnings: string[] = [];
   const entry: LockEnumEntry = lock.enums[ir.fullName] ?? {
     nextValue: 1,
@@ -265,14 +265,14 @@ export function syncEnum(ir: IREnum, lock: LockFile): SyncResult {
   }
   ir.reserved = entry.reserved;
   return { warnings };
-}
+};
 
 /** Marks lockfile entries absent from the current schema as `removed` rather than deleting them, per D6/§7.2. */
-export function markRemovedEntries(
+export const markRemovedEntries = (
   lock: LockFile,
   presentMessageNames: ReadonlySet<string>,
   presentEnumNames: ReadonlySet<string>,
-): string[] {
+): string[] => {
   const warnings: string[] = [];
   for (const [name, entry] of Object.entries(lock.messages)) {
     if (!presentMessageNames.has(name) && !entry.removed) {
@@ -287,18 +287,76 @@ export function markRemovedEntries(
     }
   }
   return warnings;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Validation (run on every load, per §7.4)
 // ---------------------------------------------------------------------------
 
-function validateFieldNumbers(
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isIRLabel = (v: unknown): v is IRLabel => v === "singular" || v === "optional" || v === "repeated";
+
+/**
+ * Structural checks for the shapes `validateFieldNumbers`/`validateEnumNumbers`
+ * below read without further guarding (`Object.entries(fields)`,
+ * `for (const r of reserved)`, `f.number >= next`) — a malformed lockfile that
+ * skipped these would otherwise surface as a raw `TypeError` (iterating a
+ * non-array, or `undefined` where a number was expected) instead of a
+ * `LockfileValidationError` naming the actual problem.
+ */
+// Each is a `const` with an explicit function-type annotation, not a bare arrow
+// function, for the same reason `validateLock` below is: TypeScript can't infer
+// an `asserts` signature from an arrow function's body, only from a function
+// declaration or a variable declared with the signature stated up front.
+const validateReservedList: (ownerName: string, reserved: unknown) => asserts reserved is IRReserved[] = (
+  ownerName,
+  reserved,
+) => {
+  if (!Array.isArray(reserved)) {
+    throw new LockfileValidationError(`${ownerName}.reserved is not an array`);
+  }
+  for (const r of reserved) {
+    if (!isPlainObject(r) || typeof r.number !== "number" || typeof r.name !== "string") {
+      throw new LockfileValidationError(`${ownerName}.reserved has a malformed entry: ${JSON.stringify(r)}`);
+    }
+  }
+};
+
+const validateFieldsMap: (ownerName: string, fields: unknown) => asserts fields is Record<string, LockFieldEntry> = (
+  ownerName,
+  fields,
+) => {
+  if (!isPlainObject(fields)) {
+    throw new LockfileValidationError(`${ownerName}.fields is not an object`);
+  }
+  for (const [name, f] of Object.entries(fields)) {
+    if (!isPlainObject(f) || typeof f.number !== "number" || typeof f.type !== "string" || !isIRLabel(f.label)) {
+      throw new LockfileValidationError(`${ownerName}.fields.${name} is malformed: ${JSON.stringify(f)}`);
+    }
+  }
+};
+
+const validateValuesMap: (ownerName: string, values: unknown) => asserts values is Record<string, number> = (
+  ownerName,
+  values,
+) => {
+  if (!isPlainObject(values)) {
+    throw new LockfileValidationError(`${ownerName}.values is not an object`);
+  }
+  for (const [name, v] of Object.entries(values)) {
+    if (typeof v !== "number") {
+      throw new LockfileValidationError(`${ownerName}.values.${name} is not a number`);
+    }
+  }
+};
+
+const validateFieldNumbers = (
   ownerName: string,
   fields: Record<string, LockFieldEntry>,
   reserved: IRReserved[],
   next: number,
-): void {
+): void => {
   const seen = new Map<number, string>();
   for (const [name, f] of Object.entries(fields)) {
     checkRange(`${ownerName}.${name}`, f.number);
@@ -330,14 +388,14 @@ function validateFieldNumbers(
       );
     }
   }
-}
+};
 
-function validateEnumNumbers(
+const validateEnumNumbers = (
   ownerName: string,
   values: Record<string, number>,
   reserved: IRReserved[],
   next: number,
-): void {
+): void => {
   const seen = new Map<number, string>();
   for (const [name, number] of Object.entries(values)) {
     checkRange(`${ownerName}.${name}`, number);
@@ -369,22 +427,57 @@ function validateEnumNumbers(
       );
     }
   }
-}
+};
 
-export function validateLock(lock: LockFile): void {
+/**
+ * `unknown`, not `LockFile`: this function's whole job is turning an
+ * unvalidated value (freshly `JSON.parse()`d, in `parseLock`'s case) into a
+ * trusted `LockFile` — asserting the input's type up front would just be
+ * restating what this function is here to prove. Every field this function
+ * itself reads off `candidate` is guarded before use; downstream code sees
+ * a real `LockFile` only once every check below has passed.
+ */
+// TypeScript requires an assertion signature (`asserts x is T`) to be either
+// a function declaration or a variable with an explicit type annotation
+// stating it — inferring one from an arrow function's body isn't supported.
+export const validateLock: (lock: unknown) => asserts lock is LockFile = (lock) => {
   if (!lock || typeof lock !== "object") {
     throw new LockfileValidationError("root is not an object");
   }
-  if (lock.version !== 1) {
-    throw new LockfileValidationError(`unsupported lockfile version ${JSON.stringify(lock.version)}`);
+  // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one crossing this assertion function makes, from the object check above to the shape it's about to validate field-by-field — see the doc comment above.
+  const candidate = lock as LockFile;
+  if (candidate.version !== 1) {
+    throw new LockfileValidationError(`unsupported lockfile version ${JSON.stringify(candidate.version)}`);
   }
-  for (const [name, entry] of Object.entries(lock.messages ?? {})) {
+  if (candidate.messages !== undefined && !isPlainObject(candidate.messages)) {
+    throw new LockfileValidationError("messages is not an object");
+  }
+  for (const [name, entry] of Object.entries(candidate.messages ?? {})) {
+    if (!isPlainObject(entry)) {
+      throw new LockfileValidationError(`message "${name}" is not an object`);
+    }
+    validateFieldsMap(name, entry.fields);
+    validateReservedList(name, entry.reserved);
+    if (typeof entry.nextField !== "number") {
+      throw new LockfileValidationError(`message "${name}".nextField is not a number`);
+    }
     validateFieldNumbers(name, entry.fields, entry.reserved, entry.nextField);
   }
-  for (const [name, entry] of Object.entries(lock.enums ?? {})) {
+  if (candidate.enums !== undefined && !isPlainObject(candidate.enums)) {
+    throw new LockfileValidationError("enums is not an object");
+  }
+  for (const [name, entry] of Object.entries(candidate.enums ?? {})) {
+    if (!isPlainObject(entry)) {
+      throw new LockfileValidationError(`enum "${name}" is not an object`);
+    }
+    validateValuesMap(name, entry.values);
+    validateReservedList(name, entry.reserved);
+    if (typeof entry.nextValue !== "number") {
+      throw new LockfileValidationError(`enum "${name}".nextValue is not a number`);
+    }
     validateEnumNumbers(name, entry.values, entry.reserved, entry.nextValue);
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Renames (handoff §7.5): identity is by name, so a rename must go through
@@ -392,7 +485,7 @@ export function validateLock(lock: LockFile): void {
 // ---------------------------------------------------------------------------
 
 /** Rewrites a stored type reference (a `LockFieldEntry.type`, or a `messages`/`enums` key) for a message rename. */
-function renamedTypeRef(typeStr: string, oldFullName: string, newFullName: string): string {
+const renamedTypeRef = (typeStr: string, oldFullName: string, newFullName: string): string => {
   const isEnum = typeStr.startsWith("enum:");
   const bare = isEnum ? typeStr.slice(5) : typeStr;
   const renamed =
@@ -402,10 +495,10 @@ function renamedTypeRef(typeStr: string, oldFullName: string, newFullName: strin
         ? newFullName + bare.slice(oldFullName.length)
         : bare;
   return isEnum ? `enum:${renamed}` : renamed;
-}
+};
 
 /** Renames a field within one message, preserving its number, type, and label. Does not touch the Zod schema. */
-export function renameField(lock: LockFile, messageFullName: string, oldName: string, newName: string): void {
+export const renameField = (lock: LockFile, messageFullName: string, oldName: string, newName: string): void => {
   const entry = lock.messages[messageFullName];
   if (!entry) {
     throw new RenameError(`"${messageFullName}" is not in the lockfile.`);
@@ -426,17 +519,17 @@ export function renameField(lock: LockFile, messageFullName: string, oldName: st
       `"${newName}" is a reserved name on "${messageFullName}" (a previously removed field) and can't be reused.`,
     );
   }
-  const field = entry.fields[oldName] as LockFieldEntry;
+  const field = entry.fields[oldName]!; // proven present by the `in` check above
   delete entry.fields[oldName];
   entry.fields[newName] = field;
-}
+};
 
 /**
  * Renames a message, cascading to any nested messages/enums and to every
  * field elsewhere in the lockfile that references the renamed message (or
  * something nested inside it) by type.
  */
-export function renameMessage(lock: LockFile, oldFullName: string, newFullName: string): void {
+export const renameMessage = (lock: LockFile, oldFullName: string, newFullName: string): void => {
   const entry = lock.messages[oldFullName];
   if (!entry) {
     throw new RenameError(`"${oldFullName}" is not in the lockfile.`);
@@ -464,10 +557,10 @@ export function renameMessage(lock: LockFile, oldFullName: string, newFullName: 
       field.type = renamedTypeRef(field.type, oldFullName, newFullName);
     }
   }
-}
+};
 
 /** Renames an enum value within one enum, preserving its number. Does not touch the Zod schema. */
-export function renameEnumValue(lock: LockFile, enumFullName: string, oldName: string, newName: string): void {
+export const renameEnumValue = (lock: LockFile, enumFullName: string, oldName: string, newName: string): void => {
   const entry = lock.enums[enumFullName];
   if (!entry) {
     throw new RenameError(`"${enumFullName}" is not in the lockfile.`);
@@ -488,7 +581,7 @@ export function renameEnumValue(lock: LockFile, enumFullName: string, oldName: s
       `"${newName}" is a reserved name on "${enumFullName}" (a previously removed value) and can't be reused.`,
     );
   }
-  const number = entry.values[oldName] as number;
+  const number = entry.values[oldName]!; // proven present by the `in` check above
   delete entry.values[oldName];
   entry.values[newName] = number;
-}
+};

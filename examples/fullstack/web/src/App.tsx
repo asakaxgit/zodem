@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createClient, ConnectError } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { asInit } from "@zodem/codec";
 import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
@@ -10,15 +11,22 @@ const client = createClient(proto.UserService, transport);
 const requestCodec = codecs.get("acme.user.v1.CreateUserRequest")!;
 const userCodec = codecs.get("acme.user.v1.User")!;
 
-interface FormState {
+const ROLES = ["member", "admin"] as const;
+
+const isRole = (v: string): v is (typeof ROLES)[number] => {
+  const roles: readonly string[] = ROLES;
+  return roles.includes(v);
+};
+
+type FormState = {
   email: string;
   displayName: string;
   age: string;
-  role: "admin" | "member";
+  role: (typeof ROLES)[number];
   nickname: string;
   city: string;
   country: string;
-}
+};
 
 const initialForm: FormState = {
   email: "",
@@ -30,7 +38,7 @@ const initialForm: FormState = {
   country: "",
 };
 
-function toCandidate(form: FormState): unknown {
+const toCandidate = (form: FormState): unknown => {
   return {
     email: form.email,
     displayName: form.displayName,
@@ -39,9 +47,9 @@ function toCandidate(form: FormState): unknown {
     nickname: form.nickname.trim() === "" ? null : form.nickname,
     address: { city: form.city, country: form.country },
   };
-}
+};
 
-export function App() {
+export const App = () => {
   const [form, setForm] = useState<FormState>(initialForm);
   const [result, setResult] = useState<z.infer<typeof zod.User> | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -52,11 +60,11 @@ export function App() {
   const validation = useMemo(() => zod.CreateUserRequest.safeParse(toCandidate(form)), [form]);
   const fieldErrors = validation.success ? {} : validation.error.flatten().fieldErrors;
 
-  function update<K extends keyof FormState>(key: K, value: FormState[K]): void {
+  const update = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((f) => ({ ...f, [key]: value }));
-  }
+  };
 
-  async function handleSubmit(e: React.FormEvent): Promise<void> {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setServerError(null);
     setResult(null);
@@ -65,9 +73,9 @@ export function App() {
     setSubmitting(true);
     try {
       const initObject = requestCodec.encode(validation.data);
-      const response = await client.createUser(initObject as never);
+      const response = await client.createUser(asInit(proto.CreateUserRequestSchema, initObject));
       if (response.user) {
-        setResult(userCodec.decode(response.user) as z.infer<typeof zod.User>);
+        setResult(zod.User.parse(userCodec.decode(response.user)));
         setForm(initialForm);
       }
     } catch (err) {
@@ -75,7 +83,7 @@ export function App() {
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
   return (
     <main style={{ maxWidth: 480, margin: "2rem auto", fontFamily: "system-ui, sans-serif" }}>
@@ -96,7 +104,12 @@ export function App() {
           <input value={form.age} onChange={(e) => update("age", e.target.value)} inputMode="numeric" />
         </Field>
         <Field label="Role">
-          <select value={form.role} onChange={(e) => update("role", e.target.value as FormState["role"])}>
+          <select
+            value={form.role}
+            onChange={(e) => {
+              if (isRole(e.target.value)) update("role", e.target.value);
+            }}
+          >
             <option value="member">member</option>
             <option value="admin">admin</option>
           </select>
@@ -126,9 +139,9 @@ export function App() {
       )}
     </main>
   );
-}
+};
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+const Field = ({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) => {
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: the control is nested inside via `children`, just not visible to the static check
     <label style={{ display: "grid", gap: "0.25rem" }}>
@@ -137,4 +150,4 @@ function Field({ label, error, children }: { label: string; error?: string; chil
       {error && <span style={{ color: "crimson", fontSize: "0.85em" }}>{error}</span>}
     </label>
   );
-}
+};

@@ -22,8 +22,38 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": {
+            "style": "type"
+          }
+        }
+      },
+      "nursery": {
+        "noUnsafeTypeAssertion": "error",
+        "useConsistentFunctionStyle": {
+          "level": "error",
+          "options": {
+            "style": "expression"
+          }
+        },
+        "useExhaustiveSwitchCases": "error",
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "useAwaitThenable": "error",
+        "noMisleadingReturnType": "error",
+        "useNullishCoalescing": "error",
+        "noUselessTypeConversion": "error",
+        "useRegexpTest": "error",
+        "useStringStartsEndsWith": "error",
+        "useIncludes": "error",
+        "noNegationInEqualityCheck": "error",
+        "useUnicodeRegex": "error"
       }
+    },
+    "domains": {
+      "types": "recommended"
     }
   },
   "assist": {

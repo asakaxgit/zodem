@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { zodem, resetRegistry } from "@zodem/core";
 import { toJsonSchema } from "../src/schema.js";
+import { props } from "./helpers.js";
 
 beforeEach(() => {
   resetRegistry();
@@ -17,11 +18,11 @@ describe("toJsonSchema: plain conversion", () => {
     });
     const schema = toJsonSchema(User);
     expect(schema.type).toBe("object");
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.id?.type).toBe("string");
-    expect(props.role?.enum).toEqual(["admin", "member"]);
-    expect(props.tags?.type).toBe("array");
-    expect(props.address?.type).toBe("object");
+    const userProps = props(schema);
+    expect(userProps.id?.type).toBe("string");
+    expect(userProps.role?.enum).toEqual(["admin", "member"]);
+    expect(userProps.tags?.type).toBe("array");
+    expect(userProps.address?.type).toBe("object");
   });
 
   it("supports union/tuple/intersection — constructs the walker/IR rejects outright", () => {
@@ -30,9 +31,9 @@ describe("toJsonSchema: plain conversion", () => {
       pair: z.tuple([z.string(), z.number()]),
     });
     const result = toJsonSchema(schema);
-    const props = result.properties as Record<string, Record<string, unknown>>;
-    expect(props.shapeOrSize?.type).toEqual(["string", "number"]);
-    expect(props.pair?.type).toBe("array");
+    const resultProps = props(result);
+    expect(resultProps.shapeOrSize?.type).toEqual(["string", "number"]);
+    expect(resultProps.pair?.type).toBe("array");
   });
 
   it("does not leak zodem's own .meta() keys (proto/field/name/validate) into the output", () => {
@@ -42,8 +43,7 @@ describe("toJsonSchema: plain conversion", () => {
       secret: z.string().meta({ validate: false }),
     });
     const schema = toJsonSchema(User);
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    for (const prop of Object.values(props)) {
+    for (const prop of Object.values(props(schema))) {
       expect(prop).not.toHaveProperty("proto");
       expect(prop).not.toHaveProperty("field");
       expect(prop).not.toHaveProperty("name");
@@ -58,8 +58,7 @@ describe("toJsonSchema: plain conversion", () => {
       internalOnly: z.string().meta({ llm: false }),
     });
     const schema = toJsonSchema(User);
-    const props = schema.properties as Record<string, unknown>;
-    expect(Object.keys(props)).toEqual(["id"]);
+    expect(Object.keys(props(schema))).toEqual(["id"]);
     expect(schema.required).toEqual(["id"]);
   });
 
@@ -68,8 +67,7 @@ describe("toJsonSchema: plain conversion", () => {
       displayName: z.string().meta({ llm: { name: "display_name" } }),
     });
     const schema = toJsonSchema(User);
-    const props = schema.properties as Record<string, unknown>;
-    expect(Object.keys(props)).toEqual(["display_name"]);
+    expect(Object.keys(props(schema))).toEqual(["display_name"]);
     expect(schema.required).toEqual(["display_name"]);
   });
 
@@ -90,8 +88,7 @@ describe("toJsonSchema: plain conversion", () => {
       .describe("A user account");
     const schema = toJsonSchema(User);
     expect(schema.description).toBe("A user account");
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.email?.description).toBe("The user's email address");
+    expect(props(schema).email?.description).toBe("The user's email address");
   });
 
   it("the `target` option changes the emitted dialect", () => {

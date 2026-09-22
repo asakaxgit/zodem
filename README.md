@@ -554,6 +554,9 @@ binary rather than calling into the library in-process, so what's tested is exac
 real invocation does. Generated `.proto` output is additionally checked against `buf lint`
 and `buf build` in the same suite.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build ordering, and PR conventions, and
+[CONVENTIONS.md](CONVENTIONS.md) for the code style rules and the reasoning behind them.
+
 ## License
 
 [MIT](LICENSE)

@@ -9,7 +9,7 @@ beforeEach(() => {
   resetRegistry();
 });
 
-function generate(opts: { validate?: boolean } = {}): string {
+const generate = (opts: { validate?: boolean } = {}): string => {
   const walked = walkRegistry();
   const lock = loadLock("/nonexistent/zodem.lock.json"); // always empty — fine, tests don't touch fs
   const syncAll = (m: IRMessage): void => {
@@ -25,7 +25,7 @@ function generate(opts: { validate?: boolean } = {}): string {
     imports: walked.imports,
     validate: opts.validate,
   });
-}
+};
 
 describe("emitProto: the handoff §4 example", () => {
   it("matches the expected shape", () => {
@@ -146,9 +146,9 @@ describe("emitProto: reserved fields survive removal", () => {
   });
 });
 
-function msg(fullName: string, fields: IRMessage["fields"], nestedMessages: IRMessage[] = []): IRMessage {
+const msg = (fullName: string, fields: IRMessage["fields"], nestedMessages: IRMessage[] = []): IRMessage => {
   return { fullName, fields, oneofs: [], nested: { messages: nestedMessages, enums: [] }, reserved: [] };
-}
+};
 
 describe("computeFileImports", () => {
   it("adds nothing for a same-package reference", () => {

@@ -477,6 +477,8 @@ pnpm lint
 
 テストは[Vitest](https://vitest.dev/)上で実行されます。CLIのテストスイートは、ライブラリをプロセス内から呼び出すのではなく、実際にビルドされた`zodem`バイナリを子プロセスとして起動します — これにより、テストされる内容が実際の呼び出しと完全に一致します。生成された`.proto`出力は、同じテストスイート内でさらに`buf lint`と`buf build`によっても検証されます。
 
+セットアップ、ビルド順序、PRの規約については[CONTRIBUTING.md](CONTRIBUTING.md)（英語）を、コードスタイルのルールとその理由については[CONVENTIONS.md](CONVENTIONS.md)（英語）を参照してください。
+
 ## ライセンス
 
 [MIT](LICENSE)

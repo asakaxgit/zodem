@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ZodemFieldMeta } from "@zodem/core";
+import { readFieldMeta, type ZodemFieldMeta } from "@zodem/core";
 
 /**
  * Peels the same presence/refinement wrappers `packages/core/src/walker.ts`'s
@@ -20,7 +20,7 @@ type Peeled =
   | z.ZodCatch<z.ZodType>
   | z.ZodReadonly<z.ZodType>;
 
-function isPeelable(schema: z.ZodType): schema is Peeled {
+const isPeelable = (schema: z.ZodType): schema is Peeled => {
   return (
     schema instanceof z.ZodOptional ||
     schema instanceof z.ZodNullable ||
@@ -30,12 +30,12 @@ function isPeelable(schema: z.ZodType): schema is Peeled {
     schema instanceof z.ZodCatch ||
     schema instanceof z.ZodReadonly
   );
-}
+};
 
-export function readZodemMeta(schema: z.ZodType): ZodemFieldMeta {
-  const own = (z.globalRegistry.get(schema) ?? {}) as ZodemFieldMeta;
+export const readZodemMeta = (schema: z.ZodType): ZodemFieldMeta => {
+  const own = readFieldMeta(schema);
   if (isPeelable(schema)) {
     return { ...readZodemMeta(schema.unwrap()), ...own };
   }
   return own;
-}
+};

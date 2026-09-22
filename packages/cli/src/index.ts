@@ -17,7 +17,7 @@ const USAGE = `Usage:
   zodem rename message <oldFullName> <newFullName>
   zodem rename enum-value <enum> <oldName> <newName>`;
 
-async function runGenerate(values: { check?: boolean; "allow-breaking"?: boolean }): Promise<void> {
+const runGenerate = async (values: { check?: boolean; "allow-breaking"?: boolean }): Promise<void> => {
   const result = await generate({
     cwd: process.cwd(),
     check: values.check === true,
@@ -39,29 +39,29 @@ async function runGenerate(values: { check?: boolean; "allow-breaking"?: boolean
   }
 
   console.log(`wrote ${result.files.length} proto file(s) and ${result.lockPath}`);
-}
+};
 
-async function runRename(args: string[]): Promise<void> {
+const runRename = async (args: string[]): Promise<void> => {
   const [kind, ...rest] = args;
   const cwd = process.cwd();
 
   if (kind === "field" && rest.length === 3) {
-    const [messageFullName, oldName, newName] = rest as [string, string, string];
-    const result = await renameField(cwd, messageFullName, oldName, newName);
+    const [messageFullName, oldName, newName] = rest;
+    const result = await renameField(cwd, messageFullName!, oldName!, newName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the field in your Zod schema, then run `zodem generate`.");
     return;
   }
   if (kind === "message" && rest.length === 2) {
-    const [oldFullName, newFullName] = rest as [string, string];
-    const result = await renameMessage(cwd, oldFullName, newFullName);
+    const [oldFullName, newFullName] = rest;
+    const result = await renameMessage(cwd, oldFullName!, newFullName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the message in your Zod schema (the zodem.message() full name), then run `zodem generate`.");
     return;
   }
   if (kind === "enum-value" && rest.length === 3) {
-    const [enumFullName, oldName, newName] = rest as [string, string, string];
-    const result = await renameEnumValue(cwd, enumFullName, oldName, newName);
+    const [enumFullName, oldName, newName] = rest;
+    const result = await renameEnumValue(cwd, enumFullName!, oldName!, newName!);
     console.log(`${result.summary} in ${result.lockPath}`);
     console.log("Next: rename the value in your Zod enum, then run `zodem generate`.");
     console.warn("warning: this rename is wire-compatible but changes the proto JSON encoding for this value.");
@@ -70,9 +70,9 @@ async function runRename(args: string[]): Promise<void> {
 
   console.error(USAGE);
   process.exitCode = 1;
-}
+};
 
-async function main(): Promise<void> {
+const main = async (): Promise<void> => {
   const { positionals, values } = parseArgs({
     args: process.argv.slice(2),
     allowPositionals: true,
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
-}
+};
 
 // Only run the CLI when this module is the entry point, not when imported as
 // a library. Compare realpaths, not raw argv[1]/import.meta.url: an npm/pnpm
@@ -106,14 +106,14 @@ async function main(): Promise<void> {
 // through node_modules/.bin/zodem, a symlink — argv[1] keeps the symlink
 // path while import.meta.url resolves to the real file, so a naive string
 // comparison never matches and the CLI silently does nothing.
-function isEntryPoint(): boolean {
+const isEntryPoint = (): boolean => {
   if (!process.argv[1]) return false;
   try {
     return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
   } catch {
     return false;
   }
-}
+};
 
 if (isEntryPoint()) {
   void main();

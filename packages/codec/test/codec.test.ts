@@ -8,7 +8,11 @@ beforeEach(() => {
   resetRegistry();
 });
 
-function synced(): IRMessage[] {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
+  return typeof v === "object" && v !== null;
+};
+
+const synced = (): IRMessage[] => {
   const walked = walkRegistry();
   const lock = loadLock("/nonexistent/zodem.lock.json");
   const syncAll = (m: IRMessage): void => {
@@ -18,7 +22,7 @@ function synced(): IRMessage[] {
   };
   for (const m of walked.messages) syncAll(m);
   return walked.messages;
-}
+};
 
 describe("codec: scalars and nesting round-trip", () => {
   it("round-trips the handoff §4 example shape", () => {
@@ -126,14 +130,18 @@ describe("codec: maps", () => {
 
 describe("codec: z.lazy() recursion", () => {
   it("round-trips a self-referential tree without hitting the stale-placeholder bug", () => {
-    interface CategoryShape {
+    type CategoryShape = {
       name: string;
       children: CategoryShape[];
-    }
-    const Category: z.ZodType<CategoryShape> = zodem.message("acme.cat.v1.Category", {
+    };
+    // `categoryRef` breaks the self-reference cycle: it has a fixed, explicit
+    // type that doesn't depend on inferring `Category`'s type, so `Category`
+    // can in turn be inferred from `zodem.message()`'s return with no cast.
+    const categoryRef: z.ZodType<CategoryShape> = z.lazy(() => Category);
+    const Category = zodem.message("acme.cat.v1.Category", {
       name: z.string(),
-      children: z.array(z.lazy(() => Category)),
-    }) as unknown as z.ZodType<CategoryShape>;
+      children: z.array(categoryRef),
+    });
 
     const codec = createCodecs(synced()).get("acme.cat.v1.Category")!;
     // non-empty children is essential here: an empty array never actually
@@ -147,9 +155,11 @@ describe("codec: z.lazy() recursion", () => {
       ],
     };
 
-    const proto = codec.encode(value as unknown as Record<string, unknown>);
+    const proto = codec.encode(value);
     expect(proto.children).toHaveLength(2);
-    expect((proto.children as Record<string, unknown>[])[1]!.children).toHaveLength(1);
+    const children = proto.children;
+    if (!Array.isArray(children) || !isRecord(children[1])) throw new Error("expected proto.children[1] to be an object");
+    expect(children[1].children).toHaveLength(1);
 
     const back = codec.decode(proto);
     expect(back).toEqual(value);

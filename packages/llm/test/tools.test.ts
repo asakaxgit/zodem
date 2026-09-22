@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { zodem, resetRegistry } from "@zodem/core";
 import { toOpenAiTool, toAnthropicTool, toGeminiTool, toolsForService } from "../src/tools.js";
+import { props } from "./helpers.js";
 
 beforeEach(() => {
   resetRegistry();
 });
 
-function registerService() {
+const registerService = () => {
   const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
     email: z.string().email(),
   });
@@ -18,7 +19,7 @@ function registerService() {
     createUser: { input: CreateUserRequest, output: CreateUserResponse, description: "Create a new user" },
   });
   return CreateUserRequest;
-}
+};
 
 describe("toOpenAiTool", () => {
   it("wraps as { type: 'function', function: { name, description, parameters } }", () => {
@@ -34,7 +35,7 @@ describe("toOpenAiTool", () => {
     const input = z.object({ nested: z.object({ x: z.string() }) });
     const tool = toOpenAiTool({ name: "t", input });
     expect(tool.function.parameters.additionalProperties).toBe(false);
-    const nested = (tool.function.parameters.properties as Record<string, Record<string, unknown>>).nested;
+    const nested = props(tool.function.parameters).nested;
     expect(nested?.additionalProperties).toBe(false);
   });
 });
@@ -62,11 +63,15 @@ describe("toGeminiTool", () => {
   });
 
   it("throws a clear, actionable error for a recursive (z.lazy()) schema", () => {
+    // `categoryRef` breaks the self-reference cycle: it has a fixed, explicit
+    // type that doesn't depend on inferring `Category`'s type, so `Category`
+    // can in turn be inferred from `zodem.message()`'s return with no cast.
+    const categoryRef: z.ZodType = z.lazy(() => Category);
     const Category = zodem.message("acme.cat.v1.Category", {
       name: z.string(),
-      children: z.array(z.lazy(() => Category)),
+      children: z.array(categoryRef),
     });
-    expect(() => toGeminiTool({ name: "cat", input: Category })).toThrow(/gemini.*\$ref|recursive|self-referential/i);
+    expect(() => toGeminiTool({ name: "cat", input: Category })).toThrow(/gemini.*\$ref|recursive|self-referential/iu);
   });
 });
 
@@ -79,6 +84,6 @@ describe("toolsForService", () => {
   });
 
   it("throws a clear error for an unregistered service name", () => {
-    expect(() => toolsForService("acme.user.v1.NoSuchService", "openai")).toThrow(/no zodem\.service\(\)/);
+    expect(() => toolsForService("acme.user.v1.NoSuchService", "openai")).toThrow(/no zodem\.service\(\)/u);
   });
 });

@@ -4,11 +4,11 @@ import { resetRegistry, zodem } from "../src/registry.js";
 import { walkRegistry } from "../src/walker.js";
 import type { IRMessage } from "../src/ir.js";
 
-function findNested(msg: IRMessage, shortName: string): IRMessage {
+const findNested = (msg: IRMessage, shortName: string): IRMessage => {
   const found = msg.nested.messages.find((m) => m.fullName.endsWith(`.${shortName}`));
   if (!found) throw new Error(`nested message "${shortName}" not found on ${msg.fullName}`);
   return found;
-}
+};
 
 beforeEach(() => {
   resetRegistry();
@@ -97,12 +97,12 @@ describe("walker: nullable -> wrapper types", () => {
 
   it("errors on nullable sint32 (no wrapper type exists)", () => {
     zodem.message("acme.a.v1.A", { x: z.number().int().meta({ proto: "sint32" }).nullable() });
-    expect(() => walkRegistry()).toThrow(/wrapper type/i);
+    expect(() => walkRegistry()).toThrow(/wrapper type/iu);
   });
 
   it("errors on nullable repeated", () => {
     zodem.message("acme.a.v1.A", { xs: z.array(z.string()).nullable() });
-    expect(() => walkRegistry()).toThrow(/nullable/i);
+    expect(() => walkRegistry()).toThrow(/nullable/iu);
   });
 });
 
@@ -196,12 +196,12 @@ describe("walker: meta pin and name override", () => {
 describe("walker: unsupported constructs error with a helpful path", () => {
   it("rejects plain z.union()", () => {
     zodem.message("acme.a.v1.A", { u: z.union([z.string(), z.number()]) });
-    expect(() => walkRegistry()).toThrow(/discriminatedUnion/);
+    expect(() => walkRegistry()).toThrow(/discriminatedUnion/u);
   });
 
   it("names the field path in the error", () => {
     zodem.message("acme.a.v1.A", { bad: z.tuple([z.string()]) });
-    expect(() => walkRegistry()).toThrow(/acme\.a\.v1\.A\.bad/);
+    expect(() => walkRegistry()).toThrow(/acme\.a\.v1\.A\.bad/u);
   });
 });
 
@@ -221,12 +221,17 @@ describe("walker: maps", () => {
 
   it("rejects a float/double key", () => {
     zodem.message("acme.a.v1.A", { bad: z.record(z.number(), z.string()) });
-    expect(() => walkRegistry()).toThrow(/map keys must be string or an integral/);
+    expect(() => walkRegistry()).toThrow(/map keys must be string or an integral/u);
   });
 
   it("rejects a bytes/message/enum key", () => {
-    zodem.message("acme.a.v1.A", { bad: z.record(zodem.bytes(), z.string()) });
-    expect(() => walkRegistry()).toThrow(/map keys must be string or an integral/);
+    // z.record()'s own type parameter already forbids a bytes key — this
+    // test exists to prove the *walker* also rejects it at runtime (for a
+    // caller who bypasses that compile-time constraint, e.g. via `any`).
+    // biome-ignore lint/nursery/noUnsafeTypeAssertion: deliberately invalid input, bypassing a compile-time constraint to test the walker's runtime rejection of it — same pattern as validateLock's invalid-lockfile tests.
+    const badKey = zodem.bytes() as unknown as z.core.$ZodRecordKey;
+    zodem.message("acme.a.v1.A", { bad: z.record(badKey, z.string()) });
+    expect(() => walkRegistry()).toThrow(/map keys must be string or an integral/u);
   });
 
   it("wraps an array value in a synthesized message (map values can't be repeated directly)", () => {
@@ -240,20 +245,24 @@ describe("walker: maps", () => {
 
   it("rejects an optional/nullable map value", () => {
     zodem.message("acme.a.v1.A", { bad: z.record(z.string(), z.string().optional()) });
-    expect(() => walkRegistry()).toThrow(/map values cannot be optional\/nullable/);
+    expect(() => walkRegistry()).toThrow(/map values cannot be optional\/nullable/u);
   });
 });
 
 describe("walker: z.lazy() recursion", () => {
   it("resolves a self-referential tree through a registered zodem.message()", () => {
-    interface CategoryShape {
+    type CategoryShape = {
       name: string;
       children: CategoryShape[];
-    }
-    const Category: z.ZodType<CategoryShape> = zodem.message("acme.cat.v1.Category", {
+    };
+    // `categoryRef` breaks the self-reference cycle: it has a fixed, explicit
+    // type that doesn't depend on inferring `Category`'s type, so `Category`
+    // can in turn be inferred from `zodem.message()`'s return with no cast.
+    const categoryRef: z.ZodType<CategoryShape> = z.lazy(() => Category);
+    const Category = zodem.message("acme.cat.v1.Category", {
       name: z.string(),
-      children: z.array(z.lazy(() => Category)),
-    }) as unknown as z.ZodType<CategoryShape>;
+      children: z.array(categoryRef),
+    });
 
     const [msg] = walkRegistry().messages;
     expect(msg!.fullName).toBe("acme.cat.v1.Category");
@@ -267,7 +276,7 @@ describe("walker: z.lazy() recursion", () => {
     // biome-ignore lint/suspicious/noExplicitAny: self-referential forward declaration needs an escape hatch from the type checker
     const Self: any = z.lazy(() => z.object({ next: Self.optional() }));
     zodem.message("acme.a.v1.A", { self: Self });
-    expect(() => walkRegistry()).toThrow(/self-referential z\.lazy\(\).*zodem\.message/s);
+    expect(() => walkRegistry()).toThrow(/self-referential z\.lazy\(\).*zodem\.message/su);
   });
 });
 
@@ -290,7 +299,7 @@ describe("walker: services", () => {
     const Req = zodem.message("acme.a.v1.GetThingRequest", { id: z.string() });
     const Res = zodem.message("acme.a.v1.Thing", { id: z.string() });
     zodem.service("acme.a.v1.ThingService", { getThing: { input: Req, output: Res } });
-    expect(() => walkRegistry()).toThrow(/RPC_RESPONSE_STANDARD_NAME/);
+    expect(() => walkRegistry()).toThrow(/RPC_RESPONSE_STANDARD_NAME/u);
   });
 });
 
@@ -302,7 +311,7 @@ describe("walker: protovalidate rule collection", () => {
       emailShort: z.email(),
       name: z.string().min(1).max(100),
       code: z.string().length(2),
-      pattern: z.string().regex(/^[a-z]+$/),
+      pattern: z.string().regex(/^[a-z]+$/u),
       pfx: z.string().startsWith("x-"),
     });
     const byName = Object.fromEntries(walkRegistry().messages[0]!.fields.map((f) => [f.jsonName, f]));

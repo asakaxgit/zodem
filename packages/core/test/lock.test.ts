@@ -18,15 +18,15 @@ import {
   PinnedNumberMismatchError,
   RenameError,
 } from "../src/errors.js";
-import type { IREnum, IRMessage } from "../src/ir.js";
+import type { IREnum, IRMessage, ScalarName } from "../src/ir.js";
 
-function msg(fullName: string, fields: IRMessage["fields"]): IRMessage {
+const msg = (fullName: string, fields: IRMessage["fields"]): IRMessage => {
   return { fullName, fields, oneofs: [], nested: { messages: [], enums: [] }, reserved: [] };
-}
+};
 
-function field(name: string, typeName: string = "string"): IRMessage["fields"][number] {
-  return { name, jsonName: name, type: { kind: "scalar", name: typeName as never }, label: "singular", warnings: [] };
-}
+const field = (name: string, typeName: ScalarName = "string"): IRMessage["fields"][number] => {
+  return { name, jsonName: name, type: { kind: "scalar", name: typeName }, label: "singular", warnings: [] };
+};
 
 describe("syncMessage: allocation", () => {
   it("assigns numbers starting at 1, in field order, and is idempotent", () => {
@@ -122,7 +122,7 @@ describe("isWireCompatible", () => {
   it("allows int32 -> int64 silently, warns int64 -> int32", () => {
     expect(isWireCompatible("int32", "int64")).toEqual({ ok: true });
     expect(isWireCompatible("int64", "int32").ok).toBe(true);
-    expect(isWireCompatible("int64", "int32").warning).toMatch(/narrowing/);
+    expect(isWireCompatible("int64", "int32").warning).toMatch(/narrowing/u);
   });
   it("allows enum <-> int32 with a warning", () => {
     expect(isWireCompatible("enum:a.A.Role", "int32").ok).toBe(true);
@@ -161,9 +161,9 @@ describe("syncMessage: breaking changes", () => {
 });
 
 describe("syncEnum", () => {
-  function enumIR(fullName: string, values: string[]): IREnum {
+  const enumIR = (fullName: string, values: string[]): IREnum => {
     return { fullName, values: values.map((v) => ({ name: v.toUpperCase(), zodValue: v })), reserved: [] };
-  }
+  };
 
   it("assigns numbers starting at 1 and never stores 0", () => {
     const lock = emptyLock();
@@ -256,7 +256,58 @@ describe("validateLock", () => {
   });
 
   it("rejects an unsupported version", () => {
-    expect(() => validateLock({ version: 2, messages: {}, enums: {} } as never)).toThrow(LockfileValidationError);
+    expect(() => validateLock({ version: 2, messages: {}, enums: {} })).toThrow(LockfileValidationError);
+  });
+
+  it("rejects messages that isn't an object", () => {
+    expect(() => validateLock({ version: 1, messages: "oops", enums: {} })).toThrow(LockfileValidationError);
+    expect(() => validateLock({ version: 1, messages: ["oops"], enums: {} })).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a message entry that isn't an object", () => {
+    expect(() => validateLock({ version: 1, messages: { "a.A": "oops" }, enums: {} })).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a message entry with fields that isn't an object", () => {
+    const lock = { version: 1, messages: { "a.A": { nextField: 1, fields: "oops", reserved: [] } }, enums: {} };
+    expect(() => validateLock(lock)).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a field entry missing a valid number/type/label", () => {
+    const badNumber = { version: 1, messages: { "a.A": { nextField: 1, fields: { x: { number: "1", type: "string", label: "singular" } }, reserved: [] } }, enums: {} };
+    expect(() => validateLock(badNumber)).toThrow(LockfileValidationError);
+
+    const badLabel = { version: 1, messages: { "a.A": { nextField: 1, fields: { x: { number: 1, type: "string", label: "bogus" } }, reserved: [] } }, enums: {} };
+    expect(() => validateLock(badLabel)).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a message entry with reserved that isn't an array", () => {
+    const lock = { version: 1, messages: { "a.A": { nextField: 1, fields: {}, reserved: "oops" } }, enums: {} };
+    expect(() => validateLock(lock)).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a reserved entry missing a valid number/name", () => {
+    const lock = { version: 1, messages: { "a.A": { nextField: 1, fields: {}, reserved: [{ number: "1", name: "x" }] } }, enums: {} };
+    expect(() => validateLock(lock)).toThrow(LockfileValidationError);
+  });
+
+  it("rejects a message entry with a non-number nextField", () => {
+    const lock = { version: 1, messages: { "a.A": { nextField: "1", fields: {}, reserved: [] } }, enums: {} };
+    expect(() => validateLock(lock)).toThrow(LockfileValidationError);
+  });
+
+  it("rejects enums that isn't an object, and the same per-entry shapes as messages", () => {
+    expect(() => validateLock({ version: 1, messages: {}, enums: "oops" })).toThrow(LockfileValidationError);
+    expect(() => validateLock({ version: 1, messages: {}, enums: { "a.A.Role": "oops" } })).toThrow(LockfileValidationError);
+
+    const badValues = { version: 1, messages: {}, enums: { "a.A.Role": { nextValue: 1, values: "oops", reserved: [] } } };
+    expect(() => validateLock(badValues)).toThrow(LockfileValidationError);
+
+    const badValueNumber = { version: 1, messages: {}, enums: { "a.A.Role": { nextValue: 1, values: { ADMIN: "1" }, reserved: [] } } };
+    expect(() => validateLock(badValueNumber)).toThrow(LockfileValidationError);
+
+    const badNextValue = { version: 1, messages: {}, enums: { "a.A.Role": { nextValue: "1", values: {}, reserved: [] } } };
+    expect(() => validateLock(badNextValue)).toThrow(LockfileValidationError);
   });
 });
 
@@ -309,7 +360,7 @@ describe("renameField", () => {
     const lock = emptyLock();
     syncMessage(msg("a.A", [field("x"), field("y")]), lock, { allowBreaking: false });
     syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false }); // y -> reserved
-    expect(() => renameField(lock, "a.A", "y", "z")).toThrow(/reserved/);
+    expect(() => renameField(lock, "a.A", "y", "z")).toThrow(/reserved/u);
   });
 
   it("throws when the new name collides with an active field", () => {
@@ -401,9 +452,9 @@ describe("renameMessage", () => {
 });
 
 describe("renameEnumValue", () => {
-  function enumIR(fullName: string, values: string[]): IREnum {
+  const enumIR = (fullName: string, values: string[]): IREnum => {
     return { fullName, values: values.map((v) => ({ name: v.toUpperCase(), zodValue: v })), reserved: [] };
-  }
+  };
 
   it("moves the value to the new name, keeping its number", () => {
     const lock = emptyLock();
@@ -425,7 +476,7 @@ describe("renameEnumValue", () => {
     const lock = emptyLock();
     syncEnum(enumIR("a.A.Role", ["admin", "member"]), lock);
     syncEnum(enumIR("a.A.Role", ["admin"]), lock); // member -> reserved
-    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "USER")).toThrow(/reserved/);
+    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "USER")).toThrow(/reserved/u);
   });
 
   it("throws when the new name collides with an active value", () => {
