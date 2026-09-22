@@ -122,7 +122,7 @@ describe("isWireCompatible", () => {
   it("allows int32 -> int64 silently, warns int64 -> int32", () => {
     expect(isWireCompatible("int32", "int64")).toEqual({ ok: true });
     expect(isWireCompatible("int64", "int32").ok).toBe(true);
-    expect(isWireCompatible("int64", "int32").warning).toMatch(/narrowing/);
+    expect(isWireCompatible("int64", "int32").warning).toMatch(/narrowing/u);
   });
   it("allows enum <-> int32 with a warning", () => {
     expect(isWireCompatible("enum:a.A.Role", "int32").ok).toBe(true);
@@ -309,7 +309,7 @@ describe("renameField", () => {
     const lock = emptyLock();
     syncMessage(msg("a.A", [field("x"), field("y")]), lock, { allowBreaking: false });
     syncMessage(msg("a.A", [field("x")]), lock, { allowBreaking: false }); // y -> reserved
-    expect(() => renameField(lock, "a.A", "y", "z")).toThrow(/reserved/);
+    expect(() => renameField(lock, "a.A", "y", "z")).toThrow(/reserved/u);
   });
 
   it("throws when the new name collides with an active field", () => {
@@ -425,7 +425,7 @@ describe("renameEnumValue", () => {
     const lock = emptyLock();
     syncEnum(enumIR("a.A.Role", ["admin", "member"]), lock);
     syncEnum(enumIR("a.A.Role", ["admin"]), lock); // member -> reserved
-    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "USER")).toThrow(/reserved/);
+    expect(() => renameEnumValue(lock, "a.A.Role", "MEMBER", "USER")).toThrow(/reserved/u);
   });
 
   it("throws when the new name collides with an active value", () => {

@@ -88,13 +88,28 @@ yet implemented anywhere in the tree.
 - [x] A lint script / lint config — root-level `biome.json` (linter only, formatter off to
       avoid mass-reformatting the existing style; `noNonNullAssertion` off, since the codebase
       uses `!` pervasively and deliberately), `pnpm lint` / `pnpm lint:fix`, wired into CI
-- [ ] Enable `nursery/noUnsafeTypeAssertion` in `biome.json` — bans `as X` type assertions
-      other than `as const`, matching the project's preference for `satisfies`/type predicates
-      over casting (see `packages/llm/src/meta.ts`'s `isPeelable()` for the pattern). Not
-      trivial to flip on repo-wide as-is: `packages/core/src/walker.ts` and
-      `packages/codec/src/codec.ts` have ~40 existing casts, most of them intentional
-      boundary-crossings (e.g. walker.ts's `_zod.def` access, explicitly documented as outside
-      the type system by design) that would each need a `// biome-ignore` with a reason.
+- [x] Enable `nursery/noUnsafeTypeAssertion` in `biome.json` — the real count was 80 sites, not
+      ~40, but they collapsed into five shared root causes (`walker.ts`'s `Record<string, any>`
+      def boundary, every codec step being narrowly typed, `validateLock`'s trusted-input
+      signature, `JsonSchema`'s open shape, and protobuf-es's exact `MessageInitShape`), each
+      fixed once at its boundary — the `cba41fb` move applied four more times. `walker.ts`'s
+      `AnyDef` became a real discriminated union of Zod's own exported `z.core.$Zod*Def`/
+      `$ZodCheck*Def` types, so `switch (def.type)` narrows natively with zero casts. Landed
+      6 permanent `biome-ignore`s (down from 80 sites): two in `walker.ts` (`defOf`/
+      `checkDefsOf`, the sanctioned `_zod.def` crossing), one in `lock.ts` (`validateLock`,
+      an assertion function whose job is discharging exactly that assertion), one in
+      `@zodem/codec` (`asInit`, the codec↔protobuf-es boundary), one in a test fixture (a
+      self-referential `z.lazy()` schema, Zod's own documented escape hatch), one in an
+      example (`lockJson as LockFile`, deliberately unvalidated per that file's own
+      availability-over-strictness design). Also enabled alongside it, per further
+      discussion: `useConsistentFunctionStyle` (arrow functions over `function` declarations,
+      148 sites, via a one-off codemod — no autofix exists for this rule), `useExhaustiveSwitchCases`,
+      the type-aware promise-safety trio (`noFloatingPromises`/`noMisusedPromises`/
+      `useAwaitThenable`) plus `noMisleadingReturnType` and `noUselessTypeConversion`
+      (`domains: { types: "recommended" }`), and several near-zero-violation idiom rules
+      (`useNullishCoalescing`, `useRegexpTest`, `useStringStartsEndsWith`, `useIncludes`,
+      `noNegationInEqualityCheck`, `useUnicodeRegex`), plus `useConsistentTypeDefinitions`
+      (`type` over `interface`, under `style` since it's stable).
 - [ ] A `LICENSE` file — repo currently has none
 - [x] A `LICENSE` file — MIT, added at the repo root; `"license": "MIT"` added to the root
       workspace and the four `@zodem/*` package.json files (not the private `@example/*` demo

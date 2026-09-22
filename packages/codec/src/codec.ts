@@ -71,7 +71,7 @@ export const flattenEnums = (messages: readonly IRMessage[], out = new Map<strin
 
 /** snake_case -> camelCase, matching protobuf's JSON/JS field-name convention. */
 const snakeToCamel = (s: string): string => {
-  return s.replace(/_([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+  return s.replace(/_([a-zA-Z0-9])/gu, (_, c: string) => c.toUpperCase());
 };
 
 const compileWkt = (fullName: WellKnownTypeName): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } => {

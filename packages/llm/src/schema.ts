@@ -33,7 +33,7 @@ const applyLlmMeta = (schema: z.core.$ZodType): z.core.$ZodType => {
     for (const [key, fieldSchema] of Object.entries(shape)) {
       const meta = readZodemMeta(fieldSchema);
       if (meta.llm === false) continue;
-      const outKey = meta.llm?.name || key;
+      const outKey = meta.llm?.name ?? key;
       rebuilt[outKey] = applyLlmMeta(fieldSchema);
     }
     const rebuiltObject = z.object(rebuilt);

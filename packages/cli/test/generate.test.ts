@@ -201,7 +201,7 @@ describe("zodem generate: end-to-end", () => {
     writeFileSync(join(root, "schema.ts"), SCHEMA_BREAKING, "utf8");
     const blocked = runCli(["generate"], root);
     expect(blocked.status).not.toBe(0);
-    expect(blocked.stderr).toMatch(/[Bb]reaking/);
+    expect(blocked.stderr).toMatch(/[Bb]reaking/u);
 
     const forced = runCli(["generate", "--allow-breaking"], root);
     expect(forced.status).toBe(0);
@@ -300,7 +300,7 @@ describe("zodem rename: end-to-end", () => {
 
     const renamed = runCli(["rename", "field", "acme.user.v1.User", "nickname", "full_name"], root);
     expect(renamed.status).toBe(0);
-    expect(renamed.stdout).toMatch(/nickname -> full_name/);
+    expect(renamed.stdout).toMatch(/nickname -> full_name/u);
 
     writeFileSync(join(root, "schema.ts"), SCHEMA_RENAMED_FIELD, "utf8");
     const result = runCli(["generate"], root); // rename only touched the lockfile — the .proto still needs a real regenerate
@@ -353,7 +353,7 @@ describe("zodem rename: end-to-end", () => {
 
     const result = runCli(["rename", "field", "acme.user.v1.User", "does_not_exist", "whatever"], root);
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/no active field named "does_not_exist"/);
+    expect(result.stderr).toMatch(/no active field named "does_not_exist"/u);
   });
 });
 

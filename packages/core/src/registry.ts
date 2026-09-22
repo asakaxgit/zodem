@@ -28,8 +28,10 @@ export type ZodemMeta =
 /** Identity registry: which schema instances are zodem.message / zodem.bytes. */
 export const zodemRegistry = z.registry<ZodemMeta>();
 
+const scalarNames: readonly string[] = SCALAR_NAMES;
+
 const isScalarName = (v: unknown): v is ScalarName => {
-  return typeof v === "string" && SCALAR_NAMES.some((s) => s === v);
+  return typeof v === "string" && scalarNames.includes(v);
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => {
@@ -64,8 +66,8 @@ export const readFieldMeta = (schema: z.core.$ZodType): ZodemFieldMeta => {
   return meta;
 };
 
-const PACKAGE_SEGMENT = /^[a-z][a-z0-9_]*$/;
-const PASCAL_SEGMENT = /^[A-Z][A-Za-z0-9_]*$/;
+const PACKAGE_SEGMENT = /^[a-z][a-z0-9_]*$/u;
+const PASCAL_SEGMENT = /^[A-Z][A-Za-z0-9_]*$/u;
 
 const packageOf = (fullName: string): string => {
   const parts = fullName.split(".");

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import type {
   IREnum,
   IREnumValue,
@@ -379,17 +379,19 @@ const collectStringRules = (def: ZodemDef): Record<string, IRRuleValue> => {
   for (const cdef of checkDefsOf(def)) {
     switch (cdef.check) {
       case "min_length":
-        rules.min_len = Number(cdef.minimum);
+        rules.min_len = cdef.minimum;
         break;
       case "max_length":
-        rules.max_len = Number(cdef.maximum);
+        rules.max_len = cdef.maximum;
         break;
       case "length_equals":
-        rules.len = Number(cdef.length);
+        rules.len = cdef.length;
         break;
       case "string_format":
         applyStringFormat(rules, cdef);
         break;
+      default:
+        break; // anything else is silently skipped, never guessed — see the header comment above
     }
   }
   return rules;
@@ -412,12 +414,12 @@ const collectNumericBounds = (def: ZodemDef): { min?: NumericBound; max?: Numeri
   // rather than asserted away, so that invariant stays checked, not assumed.
   for (const cdef of checkDefsOf(def)) {
     if (cdef.check === "greater_than" && typeof cdef.value !== "object") {
-      const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
+      const candidate: NumericBound = { value: cdef.value, inclusive: cdef.inclusive };
       if (!min || Number(candidate.value) > Number(min.value) || (Number(candidate.value) === Number(min.value) && !candidate.inclusive)) {
         min = candidate;
       }
     } else if (cdef.check === "less_than" && typeof cdef.value !== "object") {
-      const candidate: NumericBound = { value: cdef.value, inclusive: !!cdef.inclusive };
+      const candidate: NumericBound = { value: cdef.value, inclusive: cdef.inclusive };
       if (!max || Number(candidate.value) < Number(max.value) || (Number(candidate.value) === Number(max.value) && !candidate.inclusive)) {
         max = candidate;
       }
@@ -468,11 +470,11 @@ const collectRules = (def: ZodemDef, group: ScalarName): IRRuleSet | undefined =
 const collectArraySizeRules = (def: z.core.$ZodArrayDef): Record<string, IRRuleValue> => {
   const rules: Record<string, IRRuleValue> = {};
   for (const cdef of checkDefsOf(def)) {
-    if (cdef.check === "min_length") rules.min_items = Number(cdef.minimum);
-    else if (cdef.check === "max_length") rules.max_items = Number(cdef.maximum);
+    if (cdef.check === "min_length") rules.min_items = cdef.minimum;
+    else if (cdef.check === "max_length") rules.max_items = cdef.maximum;
     else if (cdef.check === "length_equals") {
-      rules.min_items = Number(cdef.length);
-      rules.max_items = Number(cdef.length);
+      rules.min_items = cdef.length;
+      rules.max_items = cdef.length;
     }
   }
   return rules;
@@ -729,7 +731,7 @@ const resolveConcreteTypeInner = (
       const upperName = upperSnake(namePreference);
       const values: IREnumValue[] = [];
       for (const [entryKey, entryVal] of Object.entries(def.entries)) {
-        if (/^\d+$/.test(entryKey)) continue; // reverse-mapped numeric enum key
+        if (/^\d+$/u.test(entryKey)) continue; // reverse-mapped numeric enum key
         void entryVal;
         values.push({ name: `${upperName}_${upperSnake(entryKey)}`, zodValue: entryKey });
       }

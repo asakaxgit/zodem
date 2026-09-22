@@ -71,7 +71,7 @@ describe("toGeminiTool", () => {
       name: z.string(),
       children: z.array(categoryRef),
     });
-    expect(() => toGeminiTool({ name: "cat", input: Category })).toThrow(/gemini.*\$ref|recursive|self-referential/i);
+    expect(() => toGeminiTool({ name: "cat", input: Category })).toThrow(/gemini.*\$ref|recursive|self-referential/iu);
   });
 });
 
@@ -84,6 +84,6 @@ describe("toolsForService", () => {
   });
 
   it("throws a clear error for an unregistered service name", () => {
-    expect(() => toolsForService("acme.user.v1.NoSuchService", "openai")).toThrow(/no zodem\.service\(\)/);
+    expect(() => toolsForService("acme.user.v1.NoSuchService", "openai")).toThrow(/no zodem\.service\(\)/u);
   });
 });

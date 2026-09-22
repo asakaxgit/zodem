@@ -171,7 +171,7 @@ export const emitProto = (input: EmitFileInput): string => {
   return lines.join("\n");
 };
 
-const VERSION_SEGMENT = /^v\d+(alpha\d*|beta\d*)?$/;
+const VERSION_SEGMENT = /^v\d+(alpha\d*|beta\d*)?$/u;
 
 /** "acme.user.v1" -> "acme/user/v1/user.proto" */
 export const outputPathFor = (packageName: string): string => {

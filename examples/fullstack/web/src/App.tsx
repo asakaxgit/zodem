@@ -14,7 +14,8 @@ const userCodec = codecs.get("acme.user.v1.User")!;
 const ROLES = ["member", "admin"] as const;
 
 const isRole = (v: string): v is (typeof ROLES)[number] => {
-  return ROLES.some((r) => r === v);
+  const roles: readonly string[] = ROLES;
+  return roles.includes(v);
 };
 
 type FormState = {
