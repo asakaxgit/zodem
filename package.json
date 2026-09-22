@@ -10,6 +10,7 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "example:generate": "pnpm --filter @example/shared run generate",

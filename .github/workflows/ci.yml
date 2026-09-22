@@ -40,6 +40,11 @@ jobs:
 
       - run: pnpm run typecheck
 
+      # tsconfig.test.json exists because every package's own tsconfig is
+      # scoped to "src" (rootDir requires it) and so never covers test/ —
+      # this is the only thing that actually type-checks the test suites.
+      - run: pnpm run typecheck:tests
+
       - run: pnpm run test
 
       # Fails the build if the schemas changed but proto/ or the lockfile
