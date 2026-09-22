@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createClient, ConnectError } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { asInit } from "@zodem/codec";
 import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
@@ -10,11 +11,17 @@ const client = createClient(proto.UserService, transport);
 const requestCodec = codecs.get("acme.user.v1.CreateUserRequest")!;
 const userCodec = codecs.get("acme.user.v1.User")!;
 
+const ROLES = ["member", "admin"] as const;
+
+function isRole(v: string): v is (typeof ROLES)[number] {
+  return ROLES.some((r) => r === v);
+}
+
 type FormState = {
   email: string;
   displayName: string;
   age: string;
-  role: "admin" | "member";
+  role: (typeof ROLES)[number];
   nickname: string;
   city: string;
   country: string;
@@ -65,9 +72,9 @@ export function App() {
     setSubmitting(true);
     try {
       const initObject = requestCodec.encode(validation.data);
-      const response = await client.createUser(initObject as never);
+      const response = await client.createUser(asInit(proto.CreateUserRequestSchema, initObject));
       if (response.user) {
-        setResult(userCodec.decode(response.user) as z.infer<typeof zod.User>);
+        setResult(zod.User.parse(userCodec.decode(response.user)));
         setForm(initialForm);
       }
     } catch (err) {
@@ -96,7 +103,12 @@ export function App() {
           <input value={form.age} onChange={(e) => update("age", e.target.value)} inputMode="numeric" />
         </Field>
         <Field label="Role">
-          <select value={form.role} onChange={(e) => update("role", e.target.value as FormState["role"])}>
+          <select
+            value={form.role}
+            onChange={(e) => {
+              if (isRole(e.target.value)) update("role", e.target.value);
+            }}
+          >
             <option value="member">member</option>
             <option value="admin">admin</option>
           </select>

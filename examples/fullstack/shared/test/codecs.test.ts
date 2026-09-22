@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+import { toBinary, fromBinary } from "@bufbuild/protobuf";
+import { createFrom } from "@zodem/codec";
 import type { z } from "zod";
 import { codecs } from "../src/codecs.js";
 import { CreateUserRequest as ZodCreateUserRequest } from "../src/schemas/user.js";
@@ -21,7 +22,7 @@ describe("shared codecs: real wire round-trip", () => {
     const codec = codecs.get("acme.user.v1.CreateUserRequest")!;
     const initObject = codec.encode(parsed);
 
-    const protoMessage = create(CreateUserRequestSchema, initObject as never);
+    const protoMessage = createFrom(CreateUserRequestSchema, initObject);
     expect(protoMessage.email).toBe("amy@example.com");
     expect(protoMessage.age).toBe(34);
     expect(protoMessage.nickname).toBeUndefined(); // null collapsed to "not set"
@@ -46,7 +47,7 @@ describe("shared codecs: real wire round-trip", () => {
       address: { city: "Osaka", country: "JP" },
     };
     const codec = codecs.get("acme.user.v1.CreateUserRequest")!;
-    const proto = create(CreateUserRequestSchema, codec.encode(zodValue) as never);
+    const proto = createFrom(CreateUserRequestSchema, codec.encode(zodValue));
     expect(proto.nickname).toBe("Bobby");
     expect(proto.role).toBe(2); // ROLE_MEMBER
 

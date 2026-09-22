@@ -38,6 +38,9 @@ importers:
       '@example/shared':
         specifier: workspace:*
         version: link:../shared
+      '@zodem/codec':
+        specifier: workspace:*
+        version: link:../../../packages/codec
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -94,6 +97,9 @@ importers:
       '@example/shared':
         specifier: workspace:*
         version: link:../shared
+      '@zodem/codec':
+        specifier: workspace:*
+        version: link:../../../packages/codec
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -146,7 +152,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 5.0.1
-        version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+        version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.13))
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -202,7 +208,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 5.0.1
-        version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.13))
+        version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
       zod:
         specifier: 4.6.5
         version: 4.6.5

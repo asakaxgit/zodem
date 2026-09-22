@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError, type ConnectRouter } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
+import { createFrom } from "@zodem/codec";
 import type { z } from "zod";
 import { zod, proto, codecs } from "@example/shared";
 
@@ -33,7 +33,7 @@ function routes(router: ConnectRouter): void {
       users.set(user.id, user);
 
       const responseCodec = codecs.get("acme.user.v1.CreateUserResponse")!;
-      return create(proto.CreateUserResponseSchema, responseCodec.encode({ user }) as never);
+      return createFrom(proto.CreateUserResponseSchema, responseCodec.encode({ user }));
     },
 
     async getUser(req) {
@@ -50,7 +50,7 @@ function routes(router: ConnectRouter): void {
       }
 
       const responseCodec = codecs.get("acme.user.v1.GetUserResponse")!;
-      return create(proto.GetUserResponseSchema, responseCodec.encode({ user }) as never);
+      return createFrom(proto.GetUserResponseSchema, responseCodec.encode({ user }));
     },
   });
 }
