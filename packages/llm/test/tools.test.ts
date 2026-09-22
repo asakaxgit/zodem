@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { zodem, resetRegistry } from "@zodem/core";
 import { toOpenAiTool, toAnthropicTool, toGeminiTool, toolsForService } from "../src/tools.js";
+import { props } from "./helpers.js";
 
 beforeEach(() => {
   resetRegistry();
@@ -34,7 +35,7 @@ describe("toOpenAiTool", () => {
     const input = z.object({ nested: z.object({ x: z.string() }) });
     const tool = toOpenAiTool({ name: "t", input });
     expect(tool.function.parameters.additionalProperties).toBe(false);
-    const nested = (tool.function.parameters.properties as Record<string, Record<string, unknown>>).nested;
+    const nested = props(tool.function.parameters).nested;
     expect(nested?.additionalProperties).toBe(false);
   });
 });

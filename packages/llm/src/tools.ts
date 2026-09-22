@@ -25,22 +25,29 @@ export type GeminiTool = {
   parameters: JsonSchema;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /** Recursively forces `additionalProperties: false` on every object node — best-effort toward OpenAI's Structured Outputs strict mode. Not a full strict-mode guarantee: strict mode also requires every property to be listed in `required` (true optionals must be modeled as nullable unions instead), which this does not attempt. */
-function forceNoAdditionalProperties(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(forceNoAdditionalProperties);
-  if (node && typeof node === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(node)) {
-      out[key] = forceNoAdditionalProperties(value);
-    }
-    if (out.type === "object") out.additionalProperties = false;
-    return out;
-  }
+function forceNoAdditionalPropertiesValue(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(forceNoAdditionalPropertiesValue);
+  if (isRecord(node)) return forceNoAdditionalPropertiesObject(node);
   return node;
 }
 
+/** `forceNoAdditionalPropertiesValue`'s object case, split out with its own signature: `toOpenAiTool`'s top-level call always has an object (the JSON Schema root), never an array or primitive, so it can call this directly and get `JsonSchema` back with no cast. */
+function forceNoAdditionalPropertiesObject(node: Record<string, unknown>): JsonSchema {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    out[key] = forceNoAdditionalPropertiesValue(value);
+  }
+  if (out.type === "object") out.additionalProperties = false;
+  return out;
+}
+
 export function toOpenAiTool(tool: ToolInput): OpenAiTool {
-  const parameters = forceNoAdditionalProperties(toJsonSchema(tool.input, { target: "draft-07" })) as JsonSchema;
+  const parameters = forceNoAdditionalPropertiesObject(toJsonSchema(tool.input, { target: "draft-07" }));
   return { type: "function", function: { name: tool.name, description: tool.description, parameters } };
 }
 

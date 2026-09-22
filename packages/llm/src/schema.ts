@@ -23,10 +23,13 @@ const ZODEM_META_KEYS = ["field", "proto", "name", "validate", "llm"];
  * touch Zod internals (`z.ZodArray`/`z.ZodObject` expose their element/shape
  * publicly).
  */
-function applyLlmMeta(schema: z.ZodType): z.ZodType {
+function applyLlmMeta(schema: z.core.$ZodType): z.core.$ZodType {
   if (schema instanceof z.ZodObject) {
-    const shape = schema.shape as Record<string, z.ZodType>;
-    const rebuilt: Record<string, z.ZodType> = {};
+    // `z.ZodObject`'s default shape type param is `$ZodLooseShape =
+    // Record<string, any>` — already structurally compatible with
+    // `Record<string, z.core.$ZodType>`, so `.shape` needs no cast.
+    const shape = schema.shape;
+    const rebuilt: Record<string, z.core.$ZodType> = {};
     for (const [key, fieldSchema] of Object.entries(shape)) {
       const meta = readZodemMeta(fieldSchema);
       if (meta.llm === false) continue;
@@ -43,25 +46,32 @@ function applyLlmMeta(schema: z.ZodType): z.ZodType {
     return ownMeta ? rebuiltObject.meta(ownMeta) : rebuiltObject;
   }
   if (schema instanceof z.ZodArray) {
-    return z.array(applyLlmMeta(schema.element as z.ZodType));
+    return z.array(applyLlmMeta(schema.element));
   }
-  if (schema instanceof z.ZodOptional) return z.optional(applyLlmMeta(schema.unwrap() as z.ZodType));
-  if (schema instanceof z.ZodNullable) return z.nullable(applyLlmMeta(schema.unwrap() as z.ZodType));
+  if (schema instanceof z.ZodOptional) return z.optional(applyLlmMeta(schema.unwrap()));
+  if (schema instanceof z.ZodNullable) return z.nullable(applyLlmMeta(schema.unwrap()));
   return schema;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /** Recursively strips zodem's own `.meta()` keys wherever `z.toJSONSchema()` merged them in (belt-and-suspenders alongside `applyLlmMeta` — this catches leakage from *nested* `zodem.message()` schemas too, reached via inlined/`$ref`'d definitions). */
-function stripZodemKeys(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(stripZodemKeys);
-  if (node && typeof node === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(node)) {
-      if (ZODEM_META_KEYS.includes(key)) continue;
-      out[key] = stripZodemKeys(value);
-    }
-    return out;
-  }
+function stripZodemKeysValue(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripZodemKeysValue);
+  if (isRecord(node)) return stripZodemKeysObject(node);
   return node;
+}
+
+/** `stripZodemKeysValue`'s object case, split out with its own signature: the top-level call in `toJsonSchema` always has an object (the JSON Schema root), never an array or primitive, so it can call this directly and return `JsonSchema` with no cast. */
+function stripZodemKeysObject(node: Record<string, unknown>): JsonSchema {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (ZODEM_META_KEYS.includes(key)) continue;
+    out[key] = stripZodemKeysValue(value);
+  }
+  return out;
 }
 
 /**
@@ -81,5 +91,5 @@ function stripZodemKeys(node: unknown): unknown {
 export function toJsonSchema(schema: z.ZodType, opts?: ToJsonSchemaOptions): JsonSchema {
   const shaped = applyLlmMeta(schema);
   const raw = z.toJSONSchema(shaped, { target: opts?.target ?? "draft-2020-12" });
-  return stripZodemKeys(raw) as JsonSchema;
+  return stripZodemKeysObject(raw);
 }
