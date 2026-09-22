@@ -22,10 +22,10 @@ const bufBin = join(cliRoot, "node_modules", ".bin", "buf");
 
 let root: string;
 
-function runCli(args: string[], cwd: string): { status: number; stdout: string; stderr: string } {
+const runCli = (args: string[], cwd: string): { status: number; stdout: string; stderr: string } => {
   const result = spawnSync(process.execPath, [cliEntry, ...args], { cwd, encoding: "utf8" });
   return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
-}
+};
 
 const CONFIG = `
 export default {
@@ -125,19 +125,19 @@ export const User = zodem.message("acme.user.v1.User", {
 });
 `;
 
-function writeProject(schema: string): void {
+const writeProject = (schema: string): void => {
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "zodem.config.ts"), CONFIG, "utf8");
   writeFileSync(join(root, "schema.ts"), schema, "utf8");
-}
+};
 
-function protoPath(): string {
+const protoPath = (): string => {
   return join(root, "proto", "acme", "user", "v1", "user.proto");
-}
+};
 
-function lockPath(): string {
+const lockPath = (): string => {
   return join(root, "zodem.lock.json");
-}
+};
 
 beforeAll(() => {
   execFileSync("pnpm", ["-r", "run", "build"], { cwd: workspaceRoot, stdio: "pipe" });
@@ -373,9 +373,9 @@ export const User = zodem.message("acme.user.v1.User", {
 `;
 
 describe("zodem generate: multi-package", () => {
-  function addressProtoPath(): string {
+  const addressProtoPath = (): string => {
     return join(root, "proto", "acme", "address", "v1", "address.proto");
-  }
+  };
 
   it("writes one file per package, with a cross-package import, and both pass buf lint/build", () => {
     writeProject(SCHEMA_TWO_PACKAGES);

@@ -8,11 +8,11 @@ beforeEach(() => {
   resetRegistry();
 });
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
   return typeof v === "object" && v !== null;
-}
+};
 
-function synced(): IRMessage[] {
+const synced = (): IRMessage[] => {
   const walked = walkRegistry();
   const lock = loadLock("/nonexistent/zodem.lock.json");
   const syncAll = (m: IRMessage): void => {
@@ -22,7 +22,7 @@ function synced(): IRMessage[] {
   };
   for (const m of walked.messages) syncAll(m);
   return walked.messages;
-}
+};
 
 describe("codec: scalars and nesting round-trip", () => {
   it("round-trips the handoff §4 example shape", () => {

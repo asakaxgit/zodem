@@ -13,42 +13,42 @@ export type RenameResult = {
   summary: string;
 };
 
-async function withLock(cwd: string, mutate: (lock: LockFile) => string): Promise<RenameResult> {
+const withLock = async (cwd: string, mutate: (lock: LockFile) => string): Promise<RenameResult> => {
   const { config, root } = await loadConfig(cwd);
   const lockPath = resolve(root, config.lockfile);
   const lock = loadLock(lockPath);
   const summary = mutate(lock);
   writeLock(lockPath, lock);
   return { lockPath, summary };
-}
+};
 
-export async function renameField(
+export const renameField = async (
   cwd: string,
   messageFullName: string,
   oldName: string,
   newName: string,
-): Promise<RenameResult> {
+): Promise<RenameResult> => {
   return withLock(cwd, (lock) => {
     coreRenameField(lock, messageFullName, oldName, newName);
     return `renamed ${messageFullName}.${oldName} -> ${newName}`;
   });
-}
+};
 
-export async function renameMessage(cwd: string, oldFullName: string, newFullName: string): Promise<RenameResult> {
+export const renameMessage = async (cwd: string, oldFullName: string, newFullName: string): Promise<RenameResult> => {
   return withLock(cwd, (lock) => {
     coreRenameMessage(lock, oldFullName, newFullName);
     return `renamed ${oldFullName} -> ${newFullName}`;
   });
-}
+};
 
-export async function renameEnumValue(
+export const renameEnumValue = async (
   cwd: string,
   enumFullName: string,
   oldName: string,
   newName: string,
-): Promise<RenameResult> {
+): Promise<RenameResult> => {
   return withLock(cwd, (lock) => {
     coreRenameEnumValue(lock, enumFullName, oldName, newName);
     return `renamed ${enumFullName}.${oldName} -> ${newName}`;
   });
-}
+};

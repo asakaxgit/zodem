@@ -2,16 +2,16 @@ import { isMessage } from "@bufbuild/protobuf";
 import { timestampDate, timestampFromDate, TimestampSchema } from "@bufbuild/protobuf/wkt";
 import type { IREnum, IRField, IRMessage, IROneof, IRType, WellKnownTypeName } from "@zodem/core";
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
   return typeof v === "object" && v !== null;
-}
+};
 
 type OneofAdt = { case?: string; value?: unknown };
 
 /** protobuf-es models a `oneof` as an ADT: `{ case: "<member>", value: … }`, or `{ case: undefined }` when unset. */
-function isOneofAdt(v: unknown): v is OneofAdt {
+const isOneofAdt = (v: unknown): v is OneofAdt => {
   return isRecord(v) && (v.case === undefined || typeof v.case === "string");
-}
+};
 
 /**
  * Runtime, IR-driven codec between `z.infer<Schema>` values and the plain
@@ -53,28 +53,28 @@ type CompileCtx = {
 
 const identity = (v: unknown): unknown => v;
 
-export function flattenMessages(messages: readonly IRMessage[], out = new Map<string, IRMessage>()): Map<string, IRMessage> {
+export const flattenMessages = (messages: readonly IRMessage[], out = new Map<string, IRMessage>()): Map<string, IRMessage> => {
   for (const m of messages) {
     out.set(m.fullName, m);
     flattenMessages(m.nested.messages, out);
   }
   return out;
-}
+};
 
-export function flattenEnums(messages: readonly IRMessage[], out = new Map<string, IREnum>()): Map<string, IREnum> {
+export const flattenEnums = (messages: readonly IRMessage[], out = new Map<string, IREnum>()): Map<string, IREnum> => {
   for (const m of messages) {
     for (const e of m.nested.enums) out.set(e.fullName, e);
     flattenEnums(m.nested.messages, out);
   }
   return out;
-}
+};
 
 /** snake_case -> camelCase, matching protobuf's JSON/JS field-name convention. */
-function snakeToCamel(s: string): string {
+const snakeToCamel = (s: string): string => {
   return s.replace(/_([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
-}
+};
 
-function compileWkt(fullName: WellKnownTypeName): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
+const compileWkt = (fullName: WellKnownTypeName): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } => {
   if (fullName === "google.protobuf.Timestamp") {
     return {
       // This step is only installed for a `google.protobuf.Timestamp`
@@ -95,7 +95,7 @@ function compileWkt(fullName: WellKnownTypeName): { encode: (v: unknown) => unkn
   // auto-unwraps wrappers to the plain scalar, and null/undefined are already
   // filtered out by the caller before encode/decode is ever invoked.
   return { encode: identity, decode: identity };
-}
+};
 
 /**
  * A synthesized `{ repeated/map values = 1; }` wrapper (see IRMessage.
@@ -105,11 +105,11 @@ function compileWkt(fullName: WellKnownTypeName): { encode: (v: unknown) => unkn
  * layer, instead of going through the normal per-field message machinery
  * (which would expect a real `values` property on the Zod side).
  */
-function compileListWrapper(
+const compileListWrapper = (
   target: IRMessage,
   ctx: CompileCtx,
   path: string,
-): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
+): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } => {
   const innerField: IRField | undefined = target.fields[0];
   if (!innerField) throw new Error(`codec: list-wrapper "${target.fullName}" has no fields`);
   const single = compileScalarLike(innerField.type, ctx, path);
@@ -127,13 +127,13 @@ function compileListWrapper(
       return values.decode(v.values);
     },
   };
-}
+};
 
-function compileScalarLike(
+const compileScalarLike = (
   type: IRType,
   ctx: CompileCtx,
   path: string,
-): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
+): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } => {
   switch (type.kind) {
     case "scalar":
       return { encode: identity, decode: identity };
@@ -198,7 +198,7 @@ function compileScalarLike(
       };
     }
   }
-}
+};
 
 type FieldPlan = {
   zodKey: string;
@@ -208,7 +208,7 @@ type FieldPlan = {
   decode: (v: unknown) => unknown;
 };
 
-function compileField(f: IRField, ctx: CompileCtx): FieldPlan {
+const compileField = (f: IRField, ctx: CompileCtx): FieldPlan => {
   const protoKey = snakeToCamel(f.name);
   const zodKey = f.jsonName;
   const single = compileScalarLike(f.type, ctx, `${f.jsonName}`);
@@ -223,7 +223,7 @@ function compileField(f: IRField, ctx: CompileCtx): FieldPlan {
     };
   }
   return { zodKey, protoKey, nullable: f.nullable ?? false, encode: single.encode, decode: single.decode };
-}
+};
 
 type OneofPlan = {
   zodFieldKey: string;
@@ -232,7 +232,7 @@ type OneofPlan = {
   decode: (adt: OneofAdt) => Record<string, unknown> | undefined;
 };
 
-function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofPlan {
+const compileOneof = (o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofPlan => {
   const protoKey = snakeToCamel(o.name);
   const members = parentMsg.fields.filter((f) => f.oneof === o.name);
 
@@ -269,9 +269,9 @@ function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofP
       return { [o.discriminatorKey]: entry.discValue, ...decoded };
     },
   };
-}
+};
 
-function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
+const compileMessage = (msg: IRMessage, ctx: CompileCtx): CompiledMessage => {
   const cached = ctx.cache.get(msg.fullName);
   if (cached) return cached;
 
@@ -340,10 +340,10 @@ function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
   };
   ctx.cache.set(msg.fullName, compiled);
   return compiled;
-}
+};
 
 /** Builds a `Codec` for every message reachable from `messages` (top-level and nested), keyed by full name. */
-export function createCodecs(messages: readonly IRMessage[]): Map<string, Codec> {
+export const createCodecs = (messages: readonly IRMessage[]): Map<string, Codec> => {
   const allMessages = flattenMessages(messages);
   const allEnums = flattenEnums(messages);
   const ctx: CompileCtx = { allMessages, allEnums, cache: new Map() };
@@ -353,4 +353,4 @@ export function createCodecs(messages: readonly IRMessage[]): Map<string, Codec>
     result.set(msg.fullName, compileMessage(msg, ctx));
   }
   return result;
-}
+};

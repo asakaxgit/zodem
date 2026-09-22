@@ -28,13 +28,13 @@ export type ZodemMeta =
 /** Identity registry: which schema instances are zodem.message / zodem.bytes. */
 export const zodemRegistry = z.registry<ZodemMeta>();
 
-function isScalarName(v: unknown): v is ScalarName {
+const isScalarName = (v: unknown): v is ScalarName => {
   return typeof v === "string" && SCALAR_NAMES.some((s) => s === v);
-}
+};
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
   return typeof v === "object" && v !== null && !Array.isArray(v);
-}
+};
 
 /**
  * Reads zodem's own keys out of a schema's `.meta()` blob. `z.globalRegistry`
@@ -44,7 +44,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * also turns a typo like `.meta({ proto: "flaot" })` from something that
  * silently reaches the emitted `.proto` into an error at walk time.
  */
-export function readFieldMeta(schema: z.core.$ZodType): ZodemFieldMeta {
+export const readFieldMeta = (schema: z.core.$ZodType): ZodemFieldMeta => {
   const raw = z.globalRegistry.get(schema) ?? {};
   const meta: ZodemFieldMeta = {};
   if (typeof raw.field === "number") meta.field = raw.field;
@@ -62,18 +62,18 @@ export function readFieldMeta(schema: z.core.$ZodType): ZodemFieldMeta {
     meta.llm = typeof raw.llm.name === "string" ? { name: raw.llm.name } : {};
   }
   return meta;
-}
+};
 
 const PACKAGE_SEGMENT = /^[a-z][a-z0-9_]*$/;
 const PASCAL_SEGMENT = /^[A-Z][A-Za-z0-9_]*$/;
 
-function packageOf(fullName: string): string {
+const packageOf = (fullName: string): string => {
   const parts = fullName.split(".");
   parts.pop();
   return parts.join(".");
-}
+};
 
-function assertFullName(fullName: string, kind: "message" | "service"): void {
+const assertFullName = (fullName: string, kind: "message" | "service"): void => {
   const segments = fullName.split(".");
   const last = segments[segments.length - 1];
   const pkg = segments.slice(0, -1);
@@ -83,15 +83,15 @@ function assertFullName(fullName: string, kind: "message" | "service"): void {
         `e.g. "acme.user.v1.User" (package segments lowercase, final segment PascalCase).`,
     );
   }
-}
+};
 
 const registeredNames = new Set<string>();
 const messagesByName = new Map<string, z.ZodType>();
 
-function claimName(fullName: string): void {
+const claimName = (fullName: string): void => {
   if (registeredNames.has(fullName)) throw new DuplicateRegistrationError(fullName);
   registeredNames.add(fullName);
-}
+};
 
 /**
  * Declares a top-level protobuf message backed by a Zod object schema.
@@ -99,10 +99,10 @@ function claimName(fullName: string): void {
  * as usual — and additionally records the schema's full name so the walker
  * can resolve references to it instead of inlining it as a nested message.
  */
-export function message<Shape extends z.core.$ZodShape>(
+export const message = <Shape extends z.core.$ZodShape>(
   fullName: string,
   shape: Shape,
-): z.ZodObject<Shape> {
+): z.ZodObject<Shape> => {
   assertFullName(fullName, "message");
   claimName(fullName);
   const schema = z.object(shape);
@@ -110,23 +110,23 @@ export function message<Shape extends z.core.$ZodShape>(
   schema.register(zodemRegistry, { kind: "message", fullName, package: packageOf(fullName) });
   messagesByName.set(fullName, schema);
   return schema;
-}
+};
 
 export type RegisteredMessage = {
   fullName: string;
   schema: z.ZodType;
 };
 
-export function getRegisteredMessages(): RegisteredMessage[] {
+export const getRegisteredMessages = (): RegisteredMessage[] => {
   return [...messagesByName.entries()].map(([fullName, schema]) => ({ fullName, schema }));
-}
+};
 
 /** The supported spelling for a `bytes` field (`z.instanceof` isn't reliably introspectable). */
-export function bytes(): z.ZodType<Uint8Array, Uint8Array> {
+export const bytes = (): z.ZodType<Uint8Array, Uint8Array> => {
   const schema = z.instanceof(Uint8Array);
   schema.register(zodemRegistry, { kind: "bytes" });
   return schema;
-}
+};
 
 export type ZodemMethodDef<
   In extends z.ZodType = z.ZodType,
@@ -149,26 +149,26 @@ export type ZodemServiceDef = {
 const serviceRegistry = new Map<string, ZodemServiceDef>();
 
 /** Declares a gRPC/Connect service made of `zodem.message` request/response pairs. */
-export function service(
+export const service = (
   fullName: string,
   methods: Record<string, ZodemMethodDef>,
-): ZodemServiceDef {
+): ZodemServiceDef => {
   assertFullName(fullName, "service");
   claimName(fullName);
   const def: ZodemServiceDef = { fullName, package: packageOf(fullName), methods };
   serviceRegistry.set(fullName, def);
   return def;
-}
+};
 
-export function getRegisteredServices(): ZodemServiceDef[] {
+export const getRegisteredServices = (): ZodemServiceDef[] => {
   return [...serviceRegistry.values()];
-}
+};
 
 /** Clears module-level registries — used between CLI runs in the same process, and in tests. */
-export function resetRegistry(): void {
+export const resetRegistry = (): void => {
   registeredNames.clear();
   messagesByName.clear();
   serviceRegistry.clear();
-}
+};
 
 export const zodem = { message, service, bytes };

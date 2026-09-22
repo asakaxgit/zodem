@@ -11,11 +11,11 @@ import { zod, proto, codecs } from "@example/shared";
 // thinks about its data.
 const users = new Map<string, z.infer<typeof zod.User>>();
 
-function zodErrorMessage(error: z.ZodError): string {
+const zodErrorMessage = (error: z.ZodError): string => {
   return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
-}
+};
 
-function routes(router: ConnectRouter): void {
+const routes = (router: ConnectRouter): void => {
   router.service(proto.UserService, {
     async createUser(req) {
       const requestCodec = codecs.get("acme.user.v1.CreateUserRequest")!;
@@ -53,7 +53,7 @@ function routes(router: ConnectRouter): void {
       return createFrom(proto.GetUserResponseSchema, responseCodec.encode({ user }));
     },
   });
-}
+};
 
 const port = Number(process.env.PORT ?? 8787);
 // No CORS setup needed: the web app's Vite dev server proxies /acme.user.v1.*

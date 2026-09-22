@@ -7,11 +7,11 @@ import { emptyLock, parseLock, serializeLock, type LockFile } from "./lock.js";
  * sync) never pulls in `node:fs`. CLI and other Node consumers import this
  * from `@zodem/core/node`.
  */
-export function loadLock(path: string): LockFile {
+export const loadLock = (path: string): LockFile => {
   if (!existsSync(path)) return emptyLock();
   return parseLock(readFileSync(path, "utf8"), path);
-}
+};
 
-export function writeLock(path: string, lock: LockFile): void {
+export const writeLock = (path: string, lock: LockFile): void => {
   writeFileSync(path, serializeLock(lock), "utf8");
-}
+};

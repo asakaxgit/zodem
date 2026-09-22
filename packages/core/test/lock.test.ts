@@ -20,13 +20,13 @@ import {
 } from "../src/errors.js";
 import type { IREnum, IRMessage, ScalarName } from "../src/ir.js";
 
-function msg(fullName: string, fields: IRMessage["fields"]): IRMessage {
+const msg = (fullName: string, fields: IRMessage["fields"]): IRMessage => {
   return { fullName, fields, oneofs: [], nested: { messages: [], enums: [] }, reserved: [] };
-}
+};
 
-function field(name: string, typeName: ScalarName = "string"): IRMessage["fields"][number] {
+const field = (name: string, typeName: ScalarName = "string"): IRMessage["fields"][number] => {
   return { name, jsonName: name, type: { kind: "scalar", name: typeName }, label: "singular", warnings: [] };
-}
+};
 
 describe("syncMessage: allocation", () => {
   it("assigns numbers starting at 1, in field order, and is idempotent", () => {
@@ -161,9 +161,9 @@ describe("syncMessage: breaking changes", () => {
 });
 
 describe("syncEnum", () => {
-  function enumIR(fullName: string, values: string[]): IREnum {
+  const enumIR = (fullName: string, values: string[]): IREnum => {
     return { fullName, values: values.map((v) => ({ name: v.toUpperCase(), zodValue: v })), reserved: [] };
-  }
+  };
 
   it("assigns numbers starting at 1 and never stores 0", () => {
     const lock = emptyLock();
@@ -401,9 +401,9 @@ describe("renameMessage", () => {
 });
 
 describe("renameEnumValue", () => {
-  function enumIR(fullName: string, values: string[]): IREnum {
+  const enumIR = (fullName: string, values: string[]): IREnum => {
     return { fullName, values: values.map((v) => ({ name: v.toUpperCase(), zodValue: v })), reserved: [] };
-  }
+  };
 
   it("moves the value to the new name, keeping its number", () => {
     const lock = emptyLock();

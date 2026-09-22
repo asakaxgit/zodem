@@ -13,9 +13,9 @@ export type ZodemConfig = {
   validate?: boolean;
 };
 
-export function defineConfig(config: ZodemConfig): ZodemConfig {
+export const defineConfig = (config: ZodemConfig): ZodemConfig => {
   return config;
-}
+};
 
 export type LoadedConfig = {
   config: ZodemConfig;
@@ -23,11 +23,11 @@ export type LoadedConfig = {
   root: string;
 };
 
-function isZodemConfig(v: Partial<ZodemConfig> | undefined): v is ZodemConfig {
+const isZodemConfig = (v: Partial<ZodemConfig> | undefined): v is ZodemConfig => {
   return !!v && Array.isArray(v.entry) && !!v.outDir && !!v.lockfile;
-}
+};
 
-export async function loadConfig(cwd: string): Promise<LoadedConfig> {
+export const loadConfig = async (cwd: string): Promise<LoadedConfig> => {
   const configPath = resolve(cwd, "zodem.config.ts");
   if (!existsSync(configPath)) {
     throw new Error(`no zodem.config.ts found at ${configPath}`);
@@ -39,4 +39,4 @@ export async function loadConfig(cwd: string): Promise<LoadedConfig> {
     throw new Error(`${configPath} must export a default defineConfig({ entry, outDir, lockfile })`);
   }
   return { config, configPath, root: dirname(configPath) };
-}
+};

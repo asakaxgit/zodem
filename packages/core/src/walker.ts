@@ -87,10 +87,10 @@ type OpaqueDef = z.core.$ZodTypeDef & { type: Exclude<z.core.$ZodTypeDef["type"]
 
 type ZodemDef = TypedDef | OpaqueDef;
 
-function defOf(schema: AnySchema): ZodemDef {
+const defOf = (schema: AnySchema): ZodemDef => {
   // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one sanctioned crossing into Zod internals (zod.dev/library-authors). A downcast from the declared base `$ZodTypeDef` to the per-kind subtype Zod actually constructed; everything downstream is fully typed.
   return schema._zod.def as ZodemDef;
-}
+};
 
 /** Every check-def kind this walker reads a payload off (`def.checks[i]`). */
 type TypedCheckDef =
@@ -119,7 +119,7 @@ type TypedCheckDef =
 type ZodemCheckDef = TypedCheckDef;
 
 /** The checks attached to a def, already unwrapped to their own defs. */
-function checkDefsOf(def: ZodemDef): ZodemCheckDef[] {
+const checkDefsOf = (def: ZodemDef): ZodemCheckDef[] => {
   // Every concrete `$ZodCheck<T>[]` a def declares (`$ZodCheck<string>[]`,
   // `$ZodCheck<boolean>[]`, …) is assignable to `$ZodCheck<never>[]` — `in T`
   // is contravariant, and `never` is assignable to any `T` — so this one
@@ -130,7 +130,7 @@ function checkDefsOf(def: ZodemDef): ZodemCheckDef[] {
     // biome-ignore lint/nursery/noUnsafeTypeAssertion: same Zod-internals boundary as defOf — `$ZodCheckDef` downcast to the per-check subtype Zod constructed.
     return c._zod.def as ZodemCheckDef;
   });
-}
+};
 
 export class WalkerContext {
   imports = new Set<string>();
@@ -151,7 +151,7 @@ export type WalkResult = {
   imports: Set<string>;
 };
 
-export function walkRegistry(): WalkResult {
+export const walkRegistry = (): WalkResult => {
   const ctx = new WalkerContext();
   const messages: IRMessage[] = [];
   for (const { fullName, schema } of getRegisteredMessages()) {
@@ -163,7 +163,7 @@ export function walkRegistry(): WalkResult {
   }
   const services = getRegisteredServices().map((svc) => walkService(svc));
   return { messages, services, imports: ctx.imports };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Unwrap: peel presence/refinement wrappers, accumulating meta as we go.
@@ -187,7 +187,7 @@ type UnwrapResult = {
   lazyChain: AnySchema[];
 };
 
-function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
+const unwrap = (schema: AnySchema, ctx: WalkerContext): UnwrapResult => {
   const def = defOf(schema);
   const ownMeta = readFieldMeta(schema);
 
@@ -236,7 +236,7 @@ function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
     default:
       return { schema, def, optional: false, nullable: false, meta: ownMeta, warnings: [], lazyChain: [] };
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Numeric format resolution
@@ -258,14 +258,14 @@ const BIGINT_FORMAT_TO_SCALAR: Record<string, ScalarName> = {
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
-function findFormatCheck(def: ZodemDef, checkKind: string): string | undefined {
+const findFormatCheck = (def: ZodemDef, checkKind: string): string | undefined => {
   for (const cdef of checkDefsOf(def)) {
     if ("format" in cdef && cdef.check === checkKind && typeof cdef.format === "string") return cdef.format;
   }
   return undefined;
-}
+};
 
-function scanNumericBounds(def: ZodemDef): { min?: number; max?: number } {
+const scanNumericBounds = (def: ZodemDef): { min?: number; max?: number } => {
   let min: number | undefined;
   let max: number | undefined;
   for (const cdef of checkDefsOf(def)) {
@@ -279,14 +279,14 @@ function scanNumericBounds(def: ZodemDef): { min?: number; max?: number } {
     }
   }
   return { min, max };
-}
+};
 
-function resolveNumberScalar(
+const resolveNumberScalar = (
   def: z.core.$ZodNumberDef | z.core.$ZodNumberFormatDef,
   meta: ZodemFieldMeta,
   path: string,
   warnings: string[],
-): ScalarName {
+): ScalarName => {
   if (meta.proto) return meta.proto;
   const format = "format" in def ? def.format : findFormatCheck(def, "number_format");
   const scalar = format && NUMBER_FORMAT_TO_SCALAR[format] ? NUMBER_FORMAT_TO_SCALAR[format] : "double";
@@ -299,13 +299,13 @@ function resolveNumberScalar(
     }
   }
   return scalar;
-}
+};
 
-function resolveBigintScalar(def: z.core.$ZodBigIntDef | z.core.$ZodBigIntFormatDef, meta: ZodemFieldMeta): ScalarName {
+const resolveBigintScalar = (def: z.core.$ZodBigIntDef | z.core.$ZodBigIntFormatDef, meta: ZodemFieldMeta): ScalarName => {
   if (meta.proto) return meta.proto;
   const format = "format" in def ? def.format : findFormatCheck(def, "bigint_format");
   return format && BIGINT_FORMAT_TO_SCALAR[format] ? BIGINT_FORMAT_TO_SCALAR[format] : "int64";
-}
+};
 
 // ---------------------------------------------------------------------------
 // protovalidate (buf.validate) rule collection.
@@ -350,7 +350,7 @@ type StringFormatLike = {
   includes?: string;
 };
 
-function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: StringFormatLike): void {
+const applyStringFormat = (rules: Record<string, IRRuleValue>, cdef: StringFormatLike): void => {
   const format = cdef.format;
   if (format === "regex" && cdef.pattern instanceof RegExp) {
     // .source drops the slashes/flags; protovalidate's `pattern` (RE2, no flags support) can only take the bare pattern text.
@@ -371,9 +371,9 @@ function applyStringFormat(rules: Record<string, IRRuleValue>, cdef: StringForma
   }
   const rule = format ? STRING_FORMAT_RULE[format] : undefined;
   if (rule) rules[rule] = true;
-}
+};
 
-function collectStringRules(def: ZodemDef): Record<string, IRRuleValue> {
+const collectStringRules = (def: ZodemDef): Record<string, IRRuleValue> => {
   const rules: Record<string, IRRuleValue> = {};
   if ("format" in def && def.check === "string_format") applyStringFormat(rules, def);
   for (const cdef of checkDefsOf(def)) {
@@ -393,7 +393,7 @@ function collectStringRules(def: ZodemDef): Record<string, IRRuleValue> {
     }
   }
   return rules;
-}
+};
 
 type NumericBound = {
   value: number | bigint;
@@ -401,7 +401,7 @@ type NumericBound = {
 };
 
 /** Tightest greater_than/less_than pair, preserving inclusive/exclusive (unlike scanNumericBounds above, which collapses to inclusive for the int32-range check). */
-function collectNumericBounds(def: ZodemDef): { min?: NumericBound; max?: NumericBound } {
+const collectNumericBounds = (def: ZodemDef): { min?: NumericBound; max?: NumericBound } => {
   let min: NumericBound | undefined;
   let max: NumericBound | undefined;
   // `cdef.value` is typed `util.Numeric` (number | bigint | Date) since a
@@ -424,15 +424,15 @@ function collectNumericBounds(def: ZodemDef): { min?: NumericBound; max?: Numeri
     }
   }
   return { min, max };
-}
+};
 
-function collectNumericRules(def: ZodemDef): Record<string, IRRuleValue> {
+const collectNumericRules = (def: ZodemDef): Record<string, IRRuleValue> => {
   const rules: Record<string, IRRuleValue> = {};
   const { min, max } = collectNumericBounds(def);
   if (min) rules[min.inclusive ? "gte" : "gt"] = min.value;
   if (max) rules[max.inclusive ? "lte" : "lt"] = max.value;
   return rules;
-}
+};
 
 const NUMERIC_RULE_GROUPS = new Set<ScalarName>([
   "double",
@@ -449,7 +449,7 @@ const NUMERIC_RULE_GROUPS = new Set<ScalarName>([
   "sfixed64",
 ]);
 
-function collectRules(def: ZodemDef, group: ScalarName): IRRuleSet | undefined {
+const collectRules = (def: ZodemDef, group: ScalarName): IRRuleSet | undefined => {
   let rules: Record<string, IRRuleValue>;
   if (group === "string") {
     rules = collectStringRules(def);
@@ -459,13 +459,13 @@ function collectRules(def: ZodemDef, group: ScalarName): IRRuleSet | undefined {
     return undefined;
   }
   return Object.keys(rules).length > 0 ? { group, rules } : undefined;
-}
+};
 
 // z.array().min()/.max()/.length() reuse the same "min_length"/"max_length"/
 // "length_equals" check kinds z.string() uses (arrays are measured by
 // `.length`, same as strings — "min_size"/"max_size" are for Set/Map-like
 // values measured by `.size`, which z.array() never produces).
-function collectArraySizeRules(def: z.core.$ZodArrayDef): Record<string, IRRuleValue> {
+const collectArraySizeRules = (def: z.core.$ZodArrayDef): Record<string, IRRuleValue> => {
   const rules: Record<string, IRRuleValue> = {};
   for (const cdef of checkDefsOf(def)) {
     if (cdef.check === "min_length") rules.min_items = Number(cdef.minimum);
@@ -476,7 +476,7 @@ function collectArraySizeRules(def: z.core.$ZodArrayDef): Record<string, IRRuleV
     }
   }
   return rules;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Nullable -> google.protobuf.*Value wrapper mapping
@@ -503,7 +503,7 @@ type Finalized = {
   rules?: IRRuleSet;
 };
 
-function finalize(
+const finalize = (
   baseType: IRType,
   opts: {
     optional: boolean;
@@ -514,7 +514,7 @@ function finalize(
     ctx: WalkerContext;
     rules?: IRRuleSet;
   },
-): Finalized {
+): Finalized => {
   let type = baseType;
   let label: IRLabel;
   const warnings = [...opts.warnings];
@@ -552,7 +552,7 @@ function finalize(
   }
 
   return { type, label, nullable: opts.nullable, warnings, rules: opts.rules };
-}
+};
 
 // proto3 map keys are string or an integral/bool scalar — no float, double, bytes, message, or enum.
 const MAP_KEY_SCALARS = new Set<ScalarName>([
@@ -576,7 +576,7 @@ const MAP_KEY_SCALARS = new Set<ScalarName>([
  * erroring, synthesize a one-field wrapper message — this cascades cleanly
  * for arbitrary depth, since each level only ever wraps its immediate child.
  */
-function wrapCollectionIfNeeded(resolved: Finalized, currentMessage: IRMessage, namePreference: string): IRType {
+const wrapCollectionIfNeeded = (resolved: Finalized, currentMessage: IRMessage, namePreference: string): IRType => {
   if (resolved.label !== "repeated" && resolved.type.kind !== "map") {
     return resolved.type;
   }
@@ -600,20 +600,20 @@ function wrapCollectionIfNeeded(resolved: Finalized, currentMessage: IRMessage, 
     currentMessage.nested.messages.push(wrapper);
   }
   return { kind: "message", fullName: wrapperName };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Concrete type resolution
 // ---------------------------------------------------------------------------
 
-function resolveConcreteType(
+const resolveConcreteType = (
   unwrapped: UnwrapResult,
   currentMessage: IRMessage,
   ctx: WalkerContext,
   path: string,
   namePreference: string,
   allowNullableWrapper: boolean,
-): Finalized {
+): Finalized => {
   // Any z.lazy() schemas consumed to reach `unwrapped` stay marked "in
   // progress" for this whole call, including any nested object-shape walk
   // below (e.g. the "object" case's walkObjectIntoMessage) — that's what
@@ -624,16 +624,16 @@ function resolveConcreteType(
   } finally {
     for (const lazySchema of unwrapped.lazyChain) ctx.visitingLazy.delete(lazySchema);
   }
-}
+};
 
-function resolveConcreteTypeInner(
+const resolveConcreteTypeInner = (
   unwrapped: UnwrapResult,
   currentMessage: IRMessage,
   ctx: WalkerContext,
   path: string,
   namePreference: string,
   allowNullableWrapper: boolean,
-): Finalized {
+): Finalized => {
   const { schema, def, optional, nullable, meta } = unwrapped;
   const warnings = [...unwrapped.warnings];
 
@@ -811,31 +811,31 @@ function resolveConcreteTypeInner(
     default:
       throw new UnsupportedTypeError(path, `Zod type "${String(def.type)}" is not supported`);
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Object -> IRMessage, discriminated unions -> oneof
 // ---------------------------------------------------------------------------
 
-export function walkObjectIntoMessage(
+export const walkObjectIntoMessage = (
   fullName: string,
   shape: Record<string, AnySchema>,
   ctx: WalkerContext,
   path: string,
-): IRMessage {
+): IRMessage => {
   const msg: IRMessage = { fullName, fields: [], oneofs: [], nested: { messages: [], enums: [] }, reserved: [] };
   for (const [key, fieldSchema] of Object.entries(shape)) {
     processField(key, fieldSchema, msg, ctx, `${path}.${key}`);
   }
   return msg;
-}
+};
 
 /** `z.discriminatedUnion()` and `z.union()` share `type: "union"` — the discriminator, not the type tag, is what tells them apart. */
-function isDiscriminatedUnionDef(def: ZodemDef): def is z.core.$ZodDiscriminatedUnionDef {
+const isDiscriminatedUnionDef = (def: ZodemDef): def is z.core.$ZodDiscriminatedUnionDef => {
   return def.type === "union" && "discriminator" in def && typeof def.discriminator === "string";
-}
+};
 
-function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMessage, ctx: WalkerContext, path: string): void {
+const processField = (key: string, fieldSchema: AnySchema, currentMessage: IRMessage, ctx: WalkerContext, path: string): void => {
   const unwrapped = unwrap(fieldSchema, ctx);
   const namePreference = unwrapped.meta.name ?? pascalCase(key);
 
@@ -855,16 +855,16 @@ function processField(key: string, fieldSchema: AnySchema, currentMessage: IRMes
     rules: resolved.rules,
     warnings: resolved.warnings,
   } satisfies IRField);
-}
+};
 
-function processDiscriminatedUnion(
+const processDiscriminatedUnion = (
   fieldKey: string,
   unwrapped: UnwrapResult,
   def: z.core.$ZodDiscriminatedUnionDef,
   currentMessage: IRMessage,
   ctx: WalkerContext,
   path: string,
-): void {
+): void => {
   const discriminatorKey = def.discriminator;
   const oneofName = camelToSnake(fieldKey);
   const memberFieldNames: string[] = [];
@@ -917,13 +917,13 @@ function processDiscriminatedUnion(
   }
 
   currentMessage.oneofs.push({ name: oneofName, zodFieldKey: fieldKey, discriminatorKey, fields: memberFieldNames });
-}
+};
 
 // ---------------------------------------------------------------------------
 // Services
 // ---------------------------------------------------------------------------
 
-function walkService(def: ZodemServiceDef): IRService {
+const walkService = (def: ZodemServiceDef): IRService => {
   const methods: IRMethod[] = [];
   for (const [name, m] of Object.entries(def.methods)) {
     const inputMeta = zodemRegistry.get(m.input);
@@ -959,4 +959,4 @@ function walkService(def: ZodemServiceDef): IRService {
     });
   }
   return { fullName: def.fullName, methods };
-}
+};

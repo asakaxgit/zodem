@@ -1,8 +1,8 @@
 import type { JsonSchema } from "../src/schema.js";
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
   return typeof v === "object" && v !== null;
-}
+};
 
 /**
  * `JsonSchema` is `Record<string, unknown>` by deliberate design (see
@@ -11,7 +11,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * public type to avoid this would be an API change made for a test's
  * convenience, not a real consumer's need.
  */
-export function props(schema: JsonSchema): Record<string, JsonSchema> {
+export const props = (schema: JsonSchema): Record<string, JsonSchema> => {
   const p = schema.properties;
   if (!isRecord(p)) throw new Error(`expected "properties" on ${JSON.stringify(schema)}`);
   const out: Record<string, JsonSchema> = {};
@@ -20,4 +20,4 @@ export function props(schema: JsonSchema): Record<string, JsonSchema> {
     out[key] = value;
   }
   return out;
-}
+};

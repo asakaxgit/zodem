@@ -4,11 +4,11 @@ import { resetRegistry, zodem } from "../src/registry.js";
 import { walkRegistry } from "../src/walker.js";
 import type { IRMessage } from "../src/ir.js";
 
-function findNested(msg: IRMessage, shortName: string): IRMessage {
+const findNested = (msg: IRMessage, shortName: string): IRMessage => {
   const found = msg.nested.messages.find((m) => m.fullName.endsWith(`.${shortName}`));
   if (!found) throw new Error(`nested message "${shortName}" not found on ${msg.fullName}`);
   return found;
-}
+};
 
 beforeEach(() => {
   resetRegistry();

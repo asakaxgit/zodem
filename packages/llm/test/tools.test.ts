@@ -8,7 +8,7 @@ beforeEach(() => {
   resetRegistry();
 });
 
-function registerService() {
+const registerService = () => {
   const CreateUserRequest = zodem.message("acme.user.v1.CreateUserRequest", {
     email: z.string().email(),
   });
@@ -19,7 +19,7 @@ function registerService() {
     createUser: { input: CreateUserRequest, output: CreateUserResponse, description: "Create a new user" },
   });
   return CreateUserRequest;
-}
+};
 
 describe("toOpenAiTool", () => {
   it("wraps as { type: 'function', function: { name, description, parameters } }", () => {

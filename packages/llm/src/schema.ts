@@ -23,7 +23,7 @@ const ZODEM_META_KEYS = ["field", "proto", "name", "validate", "llm"];
  * touch Zod internals (`z.ZodArray`/`z.ZodObject` expose their element/shape
  * publicly).
  */
-function applyLlmMeta(schema: z.core.$ZodType): z.core.$ZodType {
+const applyLlmMeta = (schema: z.core.$ZodType): z.core.$ZodType => {
   if (schema instanceof z.ZodObject) {
     // `z.ZodObject`'s default shape type param is `$ZodLooseShape =
     // Record<string, any>` — already structurally compatible with
@@ -51,28 +51,28 @@ function applyLlmMeta(schema: z.core.$ZodType): z.core.$ZodType {
   if (schema instanceof z.ZodOptional) return z.optional(applyLlmMeta(schema.unwrap()));
   if (schema instanceof z.ZodNullable) return z.nullable(applyLlmMeta(schema.unwrap()));
   return schema;
-}
+};
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+const isRecord = (v: unknown): v is Record<string, unknown> => {
   return typeof v === "object" && v !== null && !Array.isArray(v);
-}
+};
 
 /** Recursively strips zodem's own `.meta()` keys wherever `z.toJSONSchema()` merged them in (belt-and-suspenders alongside `applyLlmMeta` — this catches leakage from *nested* `zodem.message()` schemas too, reached via inlined/`$ref`'d definitions). */
-function stripZodemKeysValue(node: unknown): unknown {
+const stripZodemKeysValue = (node: unknown): unknown => {
   if (Array.isArray(node)) return node.map(stripZodemKeysValue);
   if (isRecord(node)) return stripZodemKeysObject(node);
   return node;
-}
+};
 
 /** `stripZodemKeysValue`'s object case, split out with its own signature: the top-level call in `toJsonSchema` always has an object (the JSON Schema root), never an array or primitive, so it can call this directly and return `JsonSchema` with no cast. */
-function stripZodemKeysObject(node: Record<string, unknown>): JsonSchema {
+const stripZodemKeysObject = (node: Record<string, unknown>): JsonSchema => {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
     if (ZODEM_META_KEYS.includes(key)) continue;
     out[key] = stripZodemKeysValue(value);
   }
   return out;
-}
+};
 
 /**
  * Converts a Zod schema to JSON Schema, deliberately bypassing @zodem/core's
@@ -88,8 +88,8 @@ function stripZodemKeysObject(node: Record<string, unknown>): JsonSchema {
  * `z.globalRegistry` `.meta()` reads from, and which `z.toJSONSchema` merges
  * into its output with no filtering (verified against Zod 4.6.5's source).
  */
-export function toJsonSchema(schema: z.ZodType, opts?: ToJsonSchemaOptions): JsonSchema {
+export const toJsonSchema = (schema: z.ZodType, opts?: ToJsonSchemaOptions): JsonSchema => {
   const shaped = applyLlmMeta(schema);
   const raw = z.toJSONSchema(shaped, { target: opts?.target ?? "draft-2020-12" });
   return stripZodemKeysObject(raw);
-}
+};
