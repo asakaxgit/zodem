@@ -88,8 +88,17 @@ type OpaqueDef = z.core.$ZodTypeDef & { type: Exclude<z.core.$ZodTypeDef["type"]
 type ZodemDef = TypedDef | OpaqueDef;
 
 const defOf = (schema: AnySchema): ZodemDef => {
-  // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one sanctioned crossing into Zod internals (zod.dev/library-authors). A downcast from the declared base `$ZodTypeDef` to the per-kind subtype Zod actually constructed; everything downstream is fully typed.
-  return schema._zod.def as ZodemDef;
+  const def = schema._zod?.def;
+  // Every real Zod schema instance has this shape by construction — this
+  // only ever fires if a future Zod version moves `_zod.def.type`, or a
+  // non-schema value reaches here by a bug elsewhere in this package. Either
+  // way, failing here with a clear message beats a confusing crash three
+  // functions later, deep inside `resolveConcreteTypeInner`'s switch.
+  if (typeof def?.type !== "string") {
+    throw new ZodemError(`internal error: expected a Zod schema def with a string "type", got ${JSON.stringify(def)} — check the installed zod version`);
+  }
+  // biome-ignore lint/nursery/noUnsafeTypeAssertion: the one sanctioned crossing into Zod internals (zod.dev/library-authors). A downcast from the declared base `$ZodTypeDef` — already checked to have the shape it should — to the per-kind subtype Zod actually constructed; everything downstream is fully typed.
+  return def as ZodemDef;
 };
 
 /** Every check-def kind this walker reads a payload off (`def.checks[i]`). */
@@ -127,8 +136,13 @@ const checkDefsOf = (def: ZodemDef): ZodemCheckDef[] => {
   // concrete array type before mapping over it.
   const checks: readonly z.core.$ZodCheck<never>[] = def.checks ?? [];
   return checks.map((c) => {
-    // biome-ignore lint/nursery/noUnsafeTypeAssertion: same Zod-internals boundary as defOf — `$ZodCheckDef` downcast to the per-check subtype Zod constructed.
-    return c._zod.def as ZodemCheckDef;
+    const cdef = c._zod?.def;
+    // Same reasoning as defOf's check above, check side.
+    if (typeof cdef?.check !== "string") {
+      throw new ZodemError(`internal error: expected a Zod check def with a string "check", got ${JSON.stringify(cdef)} — check the installed zod version`);
+    }
+    // biome-ignore lint/nursery/noUnsafeTypeAssertion: same Zod-internals boundary as defOf — `$ZodCheckDef` — already checked to have the shape it should — downcast to the per-check subtype Zod constructed.
+    return cdef as ZodemCheckDef;
   });
 };
 

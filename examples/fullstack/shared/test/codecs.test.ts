@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toBinary, fromBinary } from "@bufbuild/protobuf";
-import { createFrom } from "@zodem/codec";
+import { asInit, createFrom } from "@zodem/codec";
 import type { z } from "zod";
 import { codecs } from "../src/codecs.js";
 import { CreateUserRequest as ZodCreateUserRequest } from "../src/schemas/user.js";
@@ -54,5 +54,25 @@ describe("shared codecs: real wire round-trip", () => {
     const bytes = toBinary(CreateUserRequestSchema, proto);
     const back = codec.decode(fromBinary(CreateUserRequestSchema, bytes));
     expect(back).toEqual(zodValue);
+  });
+});
+
+describe("asInit: validates every key against the real generated schema", () => {
+  it("accepts every real field name, including a nested message field", () => {
+    expect(() =>
+      asInit(CreateUserRequestSchema, {
+        email: "amy@example.com",
+        displayName: "Amy",
+        age: 34,
+        role: 1,
+        address: { city: "Tokyo", country: "JP" },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a key that isn't a field of the schema", () => {
+    expect(() => asInit(CreateUserRequestSchema, { email: "amy@example.com", bogus: "nope" })).toThrow(
+      /"bogus" is not a field of "acme\.user\.v1\.CreateUserRequest"/u,
+    );
   });
 });

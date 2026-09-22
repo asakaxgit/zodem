@@ -293,6 +293,64 @@ export const markRemovedEntries = (
 // Validation (run on every load, per §7.4)
 // ---------------------------------------------------------------------------
 
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isIRLabel = (v: unknown): v is IRLabel => v === "singular" || v === "optional" || v === "repeated";
+
+/**
+ * Structural checks for the shapes `validateFieldNumbers`/`validateEnumNumbers`
+ * below read without further guarding (`Object.entries(fields)`,
+ * `for (const r of reserved)`, `f.number >= next`) — a malformed lockfile that
+ * skipped these would otherwise surface as a raw `TypeError` (iterating a
+ * non-array, or `undefined` where a number was expected) instead of a
+ * `LockfileValidationError` naming the actual problem.
+ */
+// Each is a `const` with an explicit function-type annotation, not a bare arrow
+// function, for the same reason `validateLock` below is: TypeScript can't infer
+// an `asserts` signature from an arrow function's body, only from a function
+// declaration or a variable declared with the signature stated up front.
+const validateReservedList: (ownerName: string, reserved: unknown) => asserts reserved is IRReserved[] = (
+  ownerName,
+  reserved,
+) => {
+  if (!Array.isArray(reserved)) {
+    throw new LockfileValidationError(`${ownerName}.reserved is not an array`);
+  }
+  for (const r of reserved) {
+    if (!isPlainObject(r) || typeof r.number !== "number" || typeof r.name !== "string") {
+      throw new LockfileValidationError(`${ownerName}.reserved has a malformed entry: ${JSON.stringify(r)}`);
+    }
+  }
+};
+
+const validateFieldsMap: (ownerName: string, fields: unknown) => asserts fields is Record<string, LockFieldEntry> = (
+  ownerName,
+  fields,
+) => {
+  if (!isPlainObject(fields)) {
+    throw new LockfileValidationError(`${ownerName}.fields is not an object`);
+  }
+  for (const [name, f] of Object.entries(fields)) {
+    if (!isPlainObject(f) || typeof f.number !== "number" || typeof f.type !== "string" || !isIRLabel(f.label)) {
+      throw new LockfileValidationError(`${ownerName}.fields.${name} is malformed: ${JSON.stringify(f)}`);
+    }
+  }
+};
+
+const validateValuesMap: (ownerName: string, values: unknown) => asserts values is Record<string, number> = (
+  ownerName,
+  values,
+) => {
+  if (!isPlainObject(values)) {
+    throw new LockfileValidationError(`${ownerName}.values is not an object`);
+  }
+  for (const [name, v] of Object.entries(values)) {
+    if (typeof v !== "number") {
+      throw new LockfileValidationError(`${ownerName}.values.${name} is not a number`);
+    }
+  }
+};
+
 const validateFieldNumbers = (
   ownerName: string,
   fields: Record<string, LockFieldEntry>,
@@ -391,10 +449,32 @@ export const validateLock: (lock: unknown) => asserts lock is LockFile = (lock) 
   if (candidate.version !== 1) {
     throw new LockfileValidationError(`unsupported lockfile version ${JSON.stringify(candidate.version)}`);
   }
+  if (candidate.messages !== undefined && !isPlainObject(candidate.messages)) {
+    throw new LockfileValidationError("messages is not an object");
+  }
   for (const [name, entry] of Object.entries(candidate.messages ?? {})) {
+    if (!isPlainObject(entry)) {
+      throw new LockfileValidationError(`message "${name}" is not an object`);
+    }
+    validateFieldsMap(name, entry.fields);
+    validateReservedList(name, entry.reserved);
+    if (typeof entry.nextField !== "number") {
+      throw new LockfileValidationError(`message "${name}".nextField is not a number`);
+    }
     validateFieldNumbers(name, entry.fields, entry.reserved, entry.nextField);
   }
+  if (candidate.enums !== undefined && !isPlainObject(candidate.enums)) {
+    throw new LockfileValidationError("enums is not an object");
+  }
   for (const [name, entry] of Object.entries(candidate.enums ?? {})) {
+    if (!isPlainObject(entry)) {
+      throw new LockfileValidationError(`enum "${name}" is not an object`);
+    }
+    validateValuesMap(name, entry.values);
+    validateReservedList(name, entry.reserved);
+    if (typeof entry.nextValue !== "number") {
+      throw new LockfileValidationError(`enum "${name}".nextValue is not a number`);
+    }
     validateEnumNumbers(name, entry.values, entry.reserved, entry.nextValue);
   }
 };

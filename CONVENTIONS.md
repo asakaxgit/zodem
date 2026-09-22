@@ -79,19 +79,30 @@ guaranteed by something outside the type system (a documented library
 contract, a cross-toolchain invariant), not just inconvenient to express —
 fold every caller through one named, single-purpose function and put exactly
 one `// biome-ignore lint/nursery/noUnsafeTypeAssertion: <reason>` on it,
-explaining *why no annotation or predicate can express this*. As of this
-writing there are six, and that's the complete list — if you find yourself
-needing a seventh, look hard for a boundary fix first (most casts turn out
-to be one):
+explaining *why no annotation or predicate can express this*. Where a cheap
+runtime check can narrow the gap even a little, add it immediately before
+the cast rather than jumping straight to the ignore — four of the six below
+do this: a malformed value now fails loudly, right at the boundary, instead
+of surfacing as a confusing crash somewhere downstream (or, worse, silently
+producing wrong output). As of this writing there are six sites, and that's
+the complete list — if you find yourself needing a seventh, look hard for a
+boundary fix first (most casts turn out to be one):
 
-| Site | Why |
-|---|---|
-| `packages/core/src/walker.ts:91` (`defOf`) | The one crossing into Zod's `_zod.def`, the sanctioned library-author API (zod.dev/library-authors) — not on the public `z.ZodType` surface. |
-| `packages/core/src/walker.ts:130` (`checkDefsOf`) | Same boundary, check side. |
-| `packages/core/src/lock.ts:389` (inside `validateLock`) | The function's whole job is turning an unvalidated value into a `LockFile`; this is the one crossing it makes to do that, with every field guarded before use downstream. |
-| `packages/codec/src/protobuf.ts:12` (`asInit`) | The `@zodem/codec` ↔ protobuf-es boundary: the shape is guaranteed by construction (both sides are compiled from the same IR), which is a cross-toolchain guarantee, not one TypeScript can see. |
-| `packages/core/test/walker.test.ts:231` | A test that deliberately bypasses a compile-time constraint (`z.record()`'s own key-type parameter) to prove the *walker* also rejects the same input at runtime. |
-| `examples/fullstack/shared/src/codecs.ts:14` | Deliberately **unvalidated**, per that file's own comment: it prefers "availability over strictness" for a lockfile read that never persists, so adding `validateLock()` there would introduce a throw path the file intentionally avoids. |
+| Site | Validated before the cast | Why the cast itself is still needed |
+|---|---|---|
+| `packages/core/src/walker.ts:100` (`defOf`) | `def.type` is checked to be a `string` (throws a clear `ZodemError` naming the actual value otherwise). | The remaining crossing into Zod's `_zod.def`, the sanctioned library-author API (zod.dev/library-authors) — narrowing which *specific* def shape it is isn't on the public `z.ZodType` surface. |
+| `packages/core/src/walker.ts:144` (`checkDefsOf`) | Same check, `cdef.check` is a `string`. | Same boundary, check side. |
+| `packages/core/src/lock.ts:447` (inside `validateLock`) | `messages`/`enums` are objects; each entry is an object; each entry's `fields`/`values`/`reserved` are checked structurally (right type, right shape) before any of them is read — see `validateFieldsMap`/`validateReservedList`/`validateValuesMap` just above it. | The one remaining crossing this assertion function makes, narrowing the now-validated shape to the nominal `LockFile` type it's proven to match. |
+| `packages/codec/src/protobuf.ts:27` (`asInit`) | Every key in `value` is checked against the schema's real field and oneof-group names (`schema.field`, `schema.oneofs`), catching a naming-derivation mismatch between the codec and protobuf-es before it would otherwise be silently dropped by `create()`. | Each field's *value* still can't be checked without re-deriving protobuf-es's own per-field-type validation — `create()` does that part. |
+| `packages/core/test/walker.test.ts:231` | Not applicable — the test's whole point is to construct deliberately invalid input. | Bypasses `z.record()`'s own compile-time key-type constraint on purpose, to prove the *walker* also rejects the same input at runtime. |
+| `examples/fullstack/shared/src/codecs.ts:14` | Deliberately **not** validated — see below. | A JSON import's inferred type is already a structural guess, not a checked one. |
+
+That last one is a real, considered exception, not an oversight: the
+surrounding comment states the file prefers "availability over strictness"
+for a lockfile read that never persists (it's a browser-side module-init
+path), so calling `validateLock()` there would add a throw this file
+deliberately doesn't want. If that tradeoff ever changes, `validateLock()` is
+already there, importable, and does the full check described above.
 
 (There's also one pre-existing `as unknown as z.ZodType<CategoryShape>`-shaped
 situation you may run into if you write a self-referential `z.lazy()`
