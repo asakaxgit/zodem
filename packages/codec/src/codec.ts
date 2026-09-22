@@ -1,5 +1,17 @@
-import { timestampDate, timestampFromDate, type Timestamp } from "@bufbuild/protobuf/wkt";
+import { isMessage } from "@bufbuild/protobuf";
+import { timestampDate, timestampFromDate, TimestampSchema } from "@bufbuild/protobuf/wkt";
 import type { IREnum, IRField, IRMessage, IROneof, IRType, WellKnownTypeName } from "@zodem/core";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+type OneofAdt = { case?: string; value?: unknown };
+
+/** protobuf-es models a `oneof` as an ADT: `{ case: "<member>", value: … }`, or `{ case: undefined }` when unset. */
+function isOneofAdt(v: unknown): v is OneofAdt {
+  return isRecord(v) && (v.case === undefined || typeof v.case === "string");
+}
 
 /**
  * Runtime, IR-driven codec between `z.infer<Schema>` values and the plain
@@ -22,8 +34,15 @@ export type Codec<T = Record<string, unknown>> = {
 };
 
 type CompiledMessage = {
-  encode(value: Record<string, unknown>): Record<string, unknown>;
-  decode(message: Record<string, unknown>): Record<string, unknown>;
+  /**
+   * `unknown`, not `Record<string, unknown>` — same reasoning as `Codec.decode`
+   * above: the value genuinely arrives untyped from either side of the wire
+   * (a nested field's raw value on decode, an arbitrary Zod value on encode),
+   * so it's validated once here, at the one place each compiled step is
+   * invoked, instead of forcing every call site to assert first.
+   */
+  encode(value: unknown): Record<string, unknown>;
+  decode(message: unknown): Record<string, unknown>;
 };
 
 type CompileCtx = {
@@ -58,8 +77,18 @@ function snakeToCamel(s: string): string {
 function compileWkt(fullName: WellKnownTypeName): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
   if (fullName === "google.protobuf.Timestamp") {
     return {
-      encode: (v) => timestampFromDate(v as Date),
-      decode: (v) => timestampDate(v as Timestamp),
+      // This step is only installed for a `google.protobuf.Timestamp`
+      // field (see the switch above), whose Zod side is always `z.date()` —
+      // the IR selection is what proves `v` is a Date here, not the static
+      // type, so the guard below is real validation, not decoration.
+      encode: (v) => {
+        if (!(v instanceof Date)) throw new Error(`codec: expected a Date for a google.protobuf.Timestamp field, got ${typeof v}`);
+        return timestampFromDate(v);
+      },
+      decode: (v) => {
+        if (!isMessage(v, TimestampSchema)) throw new Error("codec: expected a google.protobuf.Timestamp message");
+        return timestampDate(v);
+      },
     };
   }
   // google.protobuf.Value/Struct, and every *Value wrapper type: protobuf-es
@@ -81,7 +110,8 @@ function compileListWrapper(
   ctx: CompileCtx,
   path: string,
 ): { encode: (v: unknown) => unknown; decode: (v: unknown) => unknown } {
-  const innerField = target.fields[0] as IRField;
+  const innerField: IRField | undefined = target.fields[0];
+  if (!innerField) throw new Error(`codec: list-wrapper "${target.fullName}" has no fields`);
   const single = compileScalarLike(innerField.type, ctx, path);
   const values =
     innerField.label === "repeated"
@@ -92,7 +122,10 @@ function compileListWrapper(
       : single; // map-of-map: innerField.label is "singular" with type.kind "map"
   return {
     encode: (v) => ({ values: values.encode(v) }),
-    decode: (v) => values.decode((v as Record<string, unknown>).values),
+    decode: (v) => {
+      if (!isRecord(v)) throw new Error(`codec: expected an object for list-wrapper "${target.fullName}" at ${path}`);
+      return values.decode(v.values);
+    },
   };
 }
 
@@ -111,24 +144,31 @@ function compileScalarLike(
       if (!target) throw new Error(`codec: unknown message "${type.fullName}" referenced at ${path}`);
       if (target.isListWrapper) return compileListWrapper(target, ctx, path);
       const compiled = compileMessage(target, ctx);
-      return {
-        encode: (v) => compiled.encode(v as Record<string, unknown>),
-        decode: (v) => compiled.decode(v as Record<string, unknown>),
-      };
+      return { encode: compiled.encode, decode: compiled.decode };
     }
     case "enum": {
       const target = ctx.allEnums.get(type.fullName);
       if (!target) throw new Error(`codec: unknown enum "${type.fullName}" referenced at ${path}`);
-      const toNumber = new Map(target.values.map((v) => [v.zodValue, v.number as number]));
-      const toName = new Map(target.values.map((v) => [v.number as number, v.zodValue]));
+      // IREnumValue.number is optional in the type (filled by lock sync) but
+      // always present by the time a codec is compiled from synced IR — an
+      // entry missing it here means the caller skipped syncEnum(), which is
+      // a programming error worth a clear message rather than a silent
+      // `undefined` key in these maps.
+      const toNumber = new Map(
+        target.values.map((v) => {
+          if (v.number === undefined) throw new Error(`codec: enum "${type.fullName}" value "${v.zodValue}" has no number; was syncEnum() run?`);
+          return [v.zodValue, v.number] as const;
+        }),
+      );
+      const toName = new Map([...toNumber.entries()].map(([zodValue, number]) => [number, zodValue] as const));
       return {
         encode: (v) => {
-          const n = toNumber.get(v as string);
+          const n = typeof v === "string" ? toNumber.get(v) : undefined;
           if (n === undefined) throw new Error(`codec: unknown enum value "${String(v)}" for ${type.fullName}`);
           return n;
         },
         decode: (v) => {
-          const n = toName.get(v as number);
+          const n = typeof v === "number" ? toName.get(v) : undefined;
           if (n === undefined) throw new Error(`codec: unknown enum number ${String(v)} for ${type.fullName}`);
           return n;
         },
@@ -144,13 +184,15 @@ function compileScalarLike(
       const valueCodec = compileScalarLike(type.value, ctx, `${path}{value}`);
       return {
         encode: (v) => {
+          if (!isRecord(v)) throw new Error(`codec: expected an object for map field at ${path}`);
           const out: Record<string, unknown> = {};
-          for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = valueCodec.encode(val);
+          for (const [k, val] of Object.entries(v)) out[k] = valueCodec.encode(val);
           return out;
         },
         decode: (v) => {
+          if (!isRecord(v)) throw new Error(`codec: expected an object for map field at ${path}`);
           const out: Record<string, unknown> = {};
-          for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = valueCodec.decode(val);
+          for (const [k, val] of Object.entries(v)) out[k] = valueCodec.decode(val);
           return out;
         },
       };
@@ -186,8 +228,8 @@ function compileField(f: IRField, ctx: CompileCtx): FieldPlan {
 type OneofPlan = {
   zodFieldKey: string;
   protoKey: string;
-  encode: (value: Record<string, unknown>) => { case: string; value: unknown };
-  decode: (adt: { case?: string; value?: unknown }) => Record<string, unknown> | undefined;
+  encode: (value: unknown) => { case: string; value: unknown };
+  decode: (adt: OneofAdt) => Record<string, unknown> | undefined;
 };
 
 function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofPlan {
@@ -212,9 +254,10 @@ function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofP
     zodFieldKey: o.zodFieldKey,
     protoKey,
     encode(value) {
-      const discValue = value[o.discriminatorKey] as string;
-      const entry = byDiscValue.get(discValue);
-      if (!entry) throw new Error(`codec: unknown discriminator value "${discValue}" for oneof "${o.name}"`);
+      if (!isRecord(value)) throw new Error(`codec: expected an object for oneof "${o.name}"`);
+      const discValue = value[o.discriminatorKey];
+      const entry = typeof discValue === "string" ? byDiscValue.get(discValue) : undefined;
+      if (!entry) throw new Error(`codec: unknown discriminator value "${String(discValue)}" for oneof "${o.name}"`);
       const { [o.discriminatorKey]: _discard, ...rest } = value;
       return { case: entry.caseKey, value: entry.compiled.encode(rest) };
     },
@@ -222,7 +265,7 @@ function compileOneof(o: IROneof, parentMsg: IRMessage, ctx: CompileCtx): OneofP
       if (!adt.case) return undefined;
       const entry = byCaseKey.get(adt.case);
       if (!entry) throw new Error(`codec: unknown oneof case "${adt.case}" for "${o.name}"`);
-      const decoded = entry.compiled.decode((adt.value ?? {}) as Record<string, unknown>);
+      const decoded = entry.compiled.decode(adt.value ?? {});
       return { [o.discriminatorKey]: entry.discValue, ...decoded };
     },
   };
@@ -262,6 +305,7 @@ function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
 
   const compiled: CompiledMessage = {
     encode(value) {
+      if (!isRecord(value)) throw new Error(`codec: expected an object to encode "${msg.fullName}", got ${typeof value}`);
       const out: Record<string, unknown> = {};
       for (const plan of fieldPlans) {
         const v = value[plan.zodKey];
@@ -271,11 +315,12 @@ function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
       for (const plan of oneofPlans) {
         const v = value[plan.zodFieldKey];
         if (v === undefined || v === null) continue;
-        out[plan.protoKey] = plan.encode(v as Record<string, unknown>);
+        out[plan.protoKey] = plan.encode(v);
       }
       return out;
     },
     decode(message) {
+      if (!isRecord(message)) throw new Error(`codec: expected an object to decode "${msg.fullName}", got ${typeof message}`);
       const out: Record<string, unknown> = {};
       for (const plan of fieldPlans) {
         const v = message[plan.protoKey];
@@ -286,8 +331,8 @@ function compileMessage(msg: IRMessage, ctx: CompileCtx): CompiledMessage {
         out[plan.zodKey] = plan.decode(v);
       }
       for (const plan of oneofPlans) {
-        const adt = message[plan.protoKey] as { case?: string; value?: unknown } | undefined;
-        if (adt?.case === undefined) continue;
+        const adt = message[plan.protoKey];
+        if (!isOneofAdt(adt) || adt.case === undefined) continue;
         out[plan.zodFieldKey] = plan.decode(adt);
       }
       return out;
