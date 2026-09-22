@@ -1,5 +1,6 @@
-export { zodem, message, service, bytes, getRegisteredMessages, getRegisteredServices, zodemRegistry, resetRegistry } from "./registry.js";
+export { zodem, message, service, bytes, getRegisteredMessages, getRegisteredServices, zodemRegistry, resetRegistry, readFieldMeta } from "./registry.js";
 export type { ZodemFieldMeta, ZodemMeta, ZodemMethodDef, ZodemServiceDef, RegisteredMessage } from "./registry.js";
+export { SCALAR_NAMES } from "./ir.js";
 export type * from "./ir.js";
 export { walkRegistry, walkObjectIntoMessage, WalkerContext } from "./walker.js";
 export type { WalkResult } from "./walker.js";

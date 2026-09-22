@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ScalarName } from "./ir.js";
+import { SCALAR_NAMES, type ScalarName } from "./ir.js";
 import { DuplicateRegistrationError, ZodemError } from "./errors.js";
 
 /**
@@ -27,6 +27,42 @@ export type ZodemMeta =
 
 /** Identity registry: which schema instances are zodem.message / zodem.bytes. */
 export const zodemRegistry = z.registry<ZodemMeta>();
+
+function isScalarName(v: unknown): v is ScalarName {
+  return typeof v === "string" && SCALAR_NAMES.some((s) => s === v);
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Reads zodem's own keys out of a schema's `.meta()` blob. `z.globalRegistry`
+ * is an open metadata bag (`{ [k: string]: unknown }` upstream, shared with
+ * whatever else a schema's `.meta()` carries — `.describe()`, JSON Schema
+ * `id`/`title`, …), so each key is *checked* here rather than asserted. That
+ * also turns a typo like `.meta({ proto: "flaot" })` from something that
+ * silently reaches the emitted `.proto` into an error at walk time.
+ */
+export function readFieldMeta(schema: z.core.$ZodType): ZodemFieldMeta {
+  const raw = z.globalRegistry.get(schema) ?? {};
+  const meta: ZodemFieldMeta = {};
+  if (typeof raw.field === "number") meta.field = raw.field;
+  if (raw.proto !== undefined) {
+    if (!isScalarName(raw.proto)) {
+      throw new ZodemError(`.meta({ proto }) must be a protobuf scalar name, got ${JSON.stringify(raw.proto)}`);
+    }
+    meta.proto = raw.proto;
+  }
+  if (typeof raw.name === "string") meta.name = raw.name;
+  if (raw.validate === false) meta.validate = false;
+  if (raw.llm === false) {
+    meta.llm = false;
+  } else if (isRecord(raw.llm)) {
+    meta.llm = typeof raw.llm.name === "string" ? { name: raw.llm.name } : {};
+  }
+  return meta;
+}
 
 const PACKAGE_SEGMENT = /^[a-z][a-z0-9_]*$/;
 const PASCAL_SEGMENT = /^[A-Z][A-Za-z0-9_]*$/;

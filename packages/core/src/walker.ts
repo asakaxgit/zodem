@@ -14,7 +14,14 @@ import type {
   WellKnownTypeName,
 } from "./ir.js";
 import { ZodemError, UnsupportedTypeError } from "./errors.js";
-import { zodemRegistry, getRegisteredMessages, getRegisteredServices, type ZodemFieldMeta, type ZodemServiceDef } from "./registry.js";
+import {
+  zodemRegistry,
+  getRegisteredMessages,
+  getRegisteredServices,
+  readFieldMeta,
+  type ZodemFieldMeta,
+  type ZodemServiceDef,
+} from "./registry.js";
 import { camelToSnake, pascalCase, upperSnake } from "./naming.js";
 
 // Zod 4 internals are read through `_zod.def`, the sanctioned library-author
@@ -87,7 +94,7 @@ type UnwrapResult = {
 
 function unwrap(schema: AnySchema, ctx: WalkerContext): UnwrapResult {
   const def = defOf(schema);
-  const ownMeta = (z.globalRegistry.get(schema as never) ?? {}) as ZodemFieldMeta;
+  const ownMeta = readFieldMeta(schema);
 
   const wrap = (inner: UnwrapResult, patch: Partial<Omit<UnwrapResult, "meta">> = {}): UnwrapResult => ({
     schema: patch.schema ?? inner.schema,
@@ -509,7 +516,7 @@ function resolveConcreteTypeInner(
   const { schema, def, optional, nullable, meta } = unwrapped;
   const warnings = [...unwrapped.warnings];
 
-  const regMeta = zodemRegistry.get(schema as never);
+  const regMeta = zodemRegistry.get(schema);
   if (regMeta?.kind === "bytes") {
     return finalize({ kind: "scalar", name: "bytes" }, { optional, nullable, allowNullableWrapper, path, warnings, ctx });
   }
@@ -759,7 +766,7 @@ function processDiscriminatedUnion(
     }
     const discValue = literalValues[0] as string;
 
-    const regMeta = zodemRegistry.get(option as never);
+    const regMeta = zodemRegistry.get(option);
     let branchFullName: string;
     if (regMeta?.kind === "message") {
       branchFullName = regMeta.fullName;
@@ -793,8 +800,8 @@ function processDiscriminatedUnion(
 function walkService(def: ZodemServiceDef): IRService {
   const methods: IRMethod[] = [];
   for (const [name, m] of Object.entries(def.methods)) {
-    const inputMeta = zodemRegistry.get(m.input as never);
-    const outputMeta = zodemRegistry.get(m.output as never);
+    const inputMeta = zodemRegistry.get(m.input);
+    const outputMeta = zodemRegistry.get(m.output);
     if (inputMeta?.kind !== "message") {
       throw new ZodemError(`${def.fullName}.${name}: input must be a zodem.message()`);
     }

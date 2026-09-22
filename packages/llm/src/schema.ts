@@ -39,7 +39,7 @@ function applyLlmMeta(schema: z.ZodType): z.ZodType {
     // schema still produces the same description/etc. `.meta()`, not
     // `.register()`: this is a throwaway conversion object with no identity
     // to preserve, and `.meta()` is the public API for "attach this data".
-    const ownMeta = z.globalRegistry.get(schema as never);
+    const ownMeta = z.globalRegistry.get(schema);
     return ownMeta ? rebuiltObject.meta(ownMeta) : rebuiltObject;
   }
   if (schema instanceof z.ZodArray) {

@@ -1,19 +1,23 @@
-export type ScalarName =
-  | "double"
-  | "float"
-  | "int32"
-  | "int64"
-  | "uint32"
-  | "uint64"
-  | "sint32"
-  | "sint64"
-  | "fixed32"
-  | "fixed64"
-  | "sfixed32"
-  | "sfixed64"
-  | "bool"
-  | "string"
-  | "bytes";
+/** Every protobuf scalar name zodem can emit — the runtime source of truth `isScalarName()` checks a `.meta({ proto })` override against. */
+export const SCALAR_NAMES = [
+  "double",
+  "float",
+  "int32",
+  "int64",
+  "uint32",
+  "uint64",
+  "sint32",
+  "sint64",
+  "fixed32",
+  "fixed64",
+  "sfixed32",
+  "sfixed64",
+  "bool",
+  "string",
+  "bytes",
+] as const;
+
+export type ScalarName = (typeof SCALAR_NAMES)[number];
 
 export type WellKnownTypeName =
   | "google.protobuf.Timestamp"
