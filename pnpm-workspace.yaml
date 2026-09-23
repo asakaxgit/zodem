@@ -1,3 +1,15 @@
 packages:
   - "packages/*"
   - "examples/fullstack/*"
+
+# Duplicates root package.json's "pnpm.onlyBuiltDependencies" on purpose:
+# that field is pnpm 10's location for this setting and this repo's daily
+# driver (pnpm@10.34.5, per "packageManager" below) still reads it from
+# there. pnpm 11+ (used only by .github/workflows/release.yml, for its
+# npm-trusted-publishing support -- see that file's comment) reads it here
+# instead and ignores the package.json field entirely. Verified both
+# versions tolerate the other's location silently (no error, no warning) --
+# safe to carry both until this repo's daily-driver pnpm moves to v11+.
+allowBuilds:
+  "@bufbuild/buf": true
+  esbuild: true
